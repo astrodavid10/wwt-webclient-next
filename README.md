@@ -1,7 +1,11 @@
 # WWT web client: next (prototype)
 
 A prototype redesign of the [WorldWide Telescope web client](https://worldwidetelescope.org/webclient/),
-built on `@wwtelescope/engine` 7.40 and `@wwtelescope/engine-pinia` (Vue 3). It keeps
+built on `@wwtelescope/engine` 7.40 and `@wwtelescope/engine-pinia` (Vue 3).
+
+**Live prototype: https://astrodavid10.github.io/wwt-webclient-next/**
+
+This is an independent prototype, not an official WorldWide Telescope release. It keeps
 WWT's data (the 27k-place search index, the Explore collections, the guided tours) and
 rebuilds the interface around two things:
 
@@ -14,16 +18,26 @@ rebuilds the interface around two things:
 - **Image Mixer.** Any number of images stacked as engine layers with their own opacity.
   One *sweep* slider fades them in from the bottom of the stack to the top (e.g. survey,
   Hubble, Chandra, Webb over one nebula). *Blink* flips between them, *Swipe* shows the
-  top two side by side, *Add light* blends additively for multi-wavelength composites,
-  and the background survey is the dimmable bottom row. Opening an image shows it as a
-  *preview* that the next image replaces unless you keep it.
+  top two side by side, and the background survey is the dimmable bottom row, with its
+  own survey picker. Opening an image shows it as a *preview* that the next image
+  replaces unless you keep it. (*Add light*, additive blending, is built but hidden for
+  now; see `MixerPanel.vue`.)
+- **Scrub.** *Scrub all* puts everything in view (up to 40 images, telescope filter
+  applied) in the mixer as a reel, ordered short to long wavelength, and crossfades
+  through it one image at a time, by slider or play. Only the neighbours of the image
+  on screen load tiles, so a long reel stays light.
+
+Every image is tagged with a telescope and a wavelength. The catalogues rarely record
+wavelength (about 47 of 3.9k images), so when they don't, the band is estimated from the
+image name and then the telescope, and the image card says it is an estimate
+(`src/catalog/bands.ts`).
 
 Also: one search box (names with typo tolerance, `M42`/`NGC 1976` style designations,
 coordinates in sexagesimal or decimal, constellations, and a CDS Sesame lookup for
 anything else), image cards with credits and descriptions, outlines that follow each
 image's real edges (computed from its level-0 tile), right-click or long-press for
 "what's here?", Explore and Tours, and the whole state in the URL
-(`?ra&dec&fov&layers&mode&blend&bgop&place&bg`) so *Share* reproduces the view and mix.
+(`?ra&dec&fov&layers&mode&pos&bgop&place&bg`) so *Share* reproduces the view and mix.
 
 One layout adapts to the screen: floating panels on desktop, a tabbed bottom sheet on
 phones, a right-hand sheet on short landscape screens.
