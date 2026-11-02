@@ -1,3 +1,5 @@
+import type { BandInfo } from "./bands";
+
 // A place from the WWT search index (searchdata_v2), flattened into plain
 // data. Engine objects (Imageset, layers) are only created when an image is
 // actually shown, so the 27k-entry index stays cheap to hold in memory.
@@ -42,8 +44,10 @@ export interface SkyPlace {
   study: StudyInfo | null;
   /** Telescope / source tag inferred from the URL and credits ("JWST", "HST"...). */
   source: string;
+  /** Wavelength band and how it was decided (null for places without imagery). */
+  band: BandInfo | null;
   /** Plain-text description, when the place came from a WTML that has one. */
   description?: string;
 }
 
-export const BANDPASS_LABELS = ["Gamma", "X-ray", "Ultraviolet", "Visible", "H-alpha", "Infrared", "Microwave", "Radio", "Visible"];
+export { BANDPASS_LABELS } from "./bands";

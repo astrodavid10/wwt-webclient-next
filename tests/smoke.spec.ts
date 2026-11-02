@@ -144,3 +144,41 @@ test("right-click on the sky says what's there", async ({ page }) => {
   await page.mouse.click((vw.width - 360) / 2, vw.height / 2, { button: "right" });
   await expect(page.locator(".card-title")).toBeVisible();
 });
+
+test("Scrub all puts every image in view in the mixer and steps through them", async ({ page }) => {
+  const errors = collectErrors(page);
+  await boot(page, "&ra=83.8221&dec=-5.3911&fov=0.4");
+  await page.waitForTimeout(1500);
+  await page.locator(".rail .iv-scrub").click();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reelLen = () => page.evaluate(() => (window as any).wwtNext.mixer.reel.length);
+  await expect.poll(reelLen).toBeGreaterThan(5);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  expect(await page.evaluate(() => (window as any).wwtNext.mixer.mode)).toBe("scrub");
+  await expect(page.locator(".mx-now").first()).toContainText(`1/${await reelLen()}`);
+
+  // Only the shown image and its neighbours are enabled, however long the reel.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const states = () => page.evaluate(() => (window as any).wwtNext.engineLayerStates() as { enabled: boolean; opacity: number }[]);
+  let s = await states();
+  expect(s.filter((l) => l.enabled).length).toBeLessThanOrEqual(4);
+  expect(s.filter((l) => l.opacity > 0).length).toBe(1);
+
+  // Halfway between images 3 and 4, both are fully opaque (no dip to the background).
+  await page.locator("#mx-scrub").fill("250");
+  s = await states();
+  expect(s.filter((l) => l.opacity > 0.99).length).toBe(2);
+  expect(s.filter((l) => l.enabled).length).toBeLessThanOrEqual(4);
+
+  await page.getByRole("button", { name: "Next image" }).click();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await expect.poll(() => page.evaluate(() => (window as any).wwtNext.mixer.scrubPos)).toBe(3);
+  await expect.poll(() => new URL(page.url()).searchParams.get("mode")).toBe("scrub");
+  expect(new URL(page.url()).searchParams.get("pos")).toBe("3");
+
+  await page.getByRole("button", { name: "Play through the images" }).click();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await expect.poll(() => page.evaluate(() => (window as any).wwtNext.mixer.scrubIndex), { timeout: 10_000 }).toBeGreaterThan(3);
+  await page.getByRole("button", { name: "Pause" }).click();
+  expect(errors).toEqual([]);
+});

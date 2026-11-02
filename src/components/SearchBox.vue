@@ -53,7 +53,7 @@
 import { computed, ref, watch } from "vue";
 import type { SearchHit, NameIndexEntry, ConstellationEntry } from "../catalog/search";
 import { parseCoordinates, resolveName, searchConstellations, searchNames } from "../catalog/search";
-import { BANDPASS_LABELS } from "../catalog/types";
+import { BAND_SHORT } from "../catalog/bands";
 import { constellationName, formatDec, formatRA, formatSize } from "../sky";
 
 const props = defineProps<{ index: NameIndexEntry[]; constellations: ConstellationEntry[]; compact?: boolean }>();
@@ -84,7 +84,7 @@ const hits = computed<SearchHit[]>(() => {
   for (const p of searchNames(props.index, q, 10)) {
     const where = constellationName(p.constellation);
     const detail = p.study
-      ? `${p.source || "Image"} · ${BANDPASS_LABELS[p.study.bandPass] ?? ""} · ${formatSize(p.sizeDeg)} · ${where}`
+      ? `${p.source || "Image"} · ${p.band ? BAND_SHORT[p.band.band] : ""} · ${formatSize(p.sizeDeg)} · ${where}`
       : `Object in ${where}`;
     out.push({ kind: "place", label: p.name, detail, raDeg: p.raHours * 15, decDeg: p.decDeg, fovDeg: p.zoom > 0 ? p.zoom / 6 : 1, place: p });
   }

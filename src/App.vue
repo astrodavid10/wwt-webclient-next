@@ -39,7 +39,7 @@
     <!-- Top bar -->
     <header ref="topbar" class="topbar">
       <a class="brand" href="https://worldwidetelescope.org/" target="_blank" rel="noopener" aria-label="WorldWide Telescope home">
-        <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="#99c8ff" stroke-width="2" /><path d="M5 19c6-6 16-9 22-7" fill="none" stroke="#f0ab52" stroke-width="2.4" stroke-linecap="round" /><circle cx="21" cy="11" r="2.6" fill="#f0ab52" /></svg>
+        <img class="brand-logo" src="./assets/wwt-logo.png" width="30" height="30" alt="" />
         <span v-if="!isPhone" class="brand-name">WorldWide Telescope</span>
       </a>
       <search-box
@@ -142,6 +142,7 @@
             @hover="hoveredId = $event"
             @open="openPlace($event)"
             @add="addToMix($event)"
+            @scrub-all="scrubAll"
           />
         </div>
       </aside>
@@ -158,7 +159,7 @@
           </button>
         </div>
         <div v-if="dockOpen" class="dock-body">
-          <mixer-panel variant="panel" @select="selectPlace($event)" />
+          <mixer-panel variant="panel" :backgrounds="backgrounds" @select="selectPlace($event)" @background="setBackground" />
         </div>
       </section>
     </template>
@@ -188,8 +189,9 @@
             @hover="hoveredId = $event"
             @open="openPlace($event)"
             @add="addToMix($event)"
+            @scrub-all="scrubAll"
           />
-          <mixer-panel v-else-if="sheetTab === 'mixer'" variant="panel" @select="selectPlace($event)" />
+          <mixer-panel v-else-if="sheetTab === 'mixer'" variant="panel" :backgrounds="backgrounds" @select="selectPlace($event)" @background="setBackground" />
           <image-card
             v-else-if="sheetTab === 'card' && selected"
             :place="selected"
@@ -233,7 +235,7 @@ import { buildNameIndex, NameIndexEntry, ConstellationEntry, SearchHit } from ".
 import { footprintSize, refineFootprint, footprintCorners, offsetToRaDec } from "./catalog/imagery";
 import { sourceColor } from "./catalog/sources";
 import type { SkyPlace } from "./catalog/types";
-import { useMixer } from "./mixer";
+import { useMixer, engineLayerStates } from "./mixer";
 import { FootprintOverlay, Outline } from "./footprints";
 import { centreConstellation, constellationList, constellationName, flyTo as skyFlyTo, formatDec, formatRA, formatSize, readCamera } from "./sky";
 import { describeBootError, hasWebGL, withTimeout } from "./boot";
@@ -345,7 +347,9 @@ function updateOutlines(): void {
   if (hov) { push({ place: hov, color: "#ffffff", width: 2.5, label: true }); }
   if (selected.value?.study) { push({ place: selected.value, color: "#f0ab52", width: 2 }); }
   if (settings.mixOutlines) {
-    for (const l of mixer.layers) { if (l.on) { push({ place: l.place, color: sourceColor(l.place.source), width: 1.4, dash: [6, 5] }); } }
+    // While scrubbing, only the image being shown (a reel can hold 40).
+    const ls = mixer.mode === "scrub" ? mixer.reel.slice(mixer.scrubIndex, mixer.scrubIndex + 1) : mixer.layers.filter((l) => l.on);
+    for (const l of ls) { push({ place: l.place, color: sourceColor(l.place.source), width: 1.4, dash: [6, 5] }); }
   }
   if (settings.imageryMap && result.value) {
     const r = result.value;
@@ -355,7 +359,7 @@ function updateOutlines(): void {
   }
   overlay.set(out);
 }
-watch([hoveredId, selected, () => settings.mixOutlines, () => settings.imageryMap, () => mixer.urlValue], updateOutlines);
+watch([hoveredId, selected, () => settings.mixOutlines, () => settings.imageryMap, () => mixer.urlValue, () => mixer.mode, () => mixer.scrubIndex], updateOutlines);
 
 // ── edge hints ──────────────────────────────────────────────────────────────
 const ARROWS = ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"];
@@ -500,6 +504,21 @@ function addToMix(p: SkyPlace): void {
   mixer.add(p, { fadeAfterMs: 0 });
 }
 function keep(p: SkyPlace): void { mixer.add(p); }
+/** "Scrub all in view": put every listed image in the mixer and step through them. */
+async function scrubAll(places: SkyPlace[]): Promise<void> {
+  // Scrub mode first, so only the images next to the slider load as they're added.
+  mixer.setMode("scrub");
+  mixer.layers.filter((l) => !l.pinned).forEach((l) => mixer.remove(l.place.id));
+  const before = mixer.count;
+  const added = await mixer.addMany(places);
+  mixer.sortReel("wavelength");
+  mixer.setScrub(0);
+  if (isPhone.value) { openSheet("mixer", "half"); } else { dockOpen.value = true; }
+  const total = mixer.reel.length;
+  toast(before
+    ? `Added ${added} images (${total} in the reel). Drag the slider or press play.`
+    : `${total} images, short to long wavelength. Drag the slider or press play.`);
+}
 function isPinned(id: string): boolean { return mixer.layers.find((l) => l.place.id === id)?.pinned ?? false; }
 function closeCard(): void { selected.value = null; sheetTab.value = "inview"; }
 
@@ -523,6 +542,7 @@ async function playTour(t: TourEntry): Promise<void> {
   exploreOpen.value = false;
   settingsOpen.value = false;
   tour.value = t;
+  mixer.pause();
   mixer.suspend(true);
   try {
     await engine.loadTour({ url: t.url, play: true });
@@ -629,6 +649,7 @@ function syncUrl(): void {
     q.set("fov", c.fovDeg < 1 ? c.fovDeg.toPrecision(3) : c.fovDeg.toFixed(2));
     if (mixer.count) { q.set("layers", mixer.urlValue); }
     if (mixer.mode !== "mix") { q.set("mode", mixer.mode); }
+    if (mixer.mode === "scrub") { q.set("pos", String(mixer.scrubIndex)); }
     if (mixer.additive) { q.set("blend", "add"); }
     if (mixer.backgroundPct !== 100) { q.set("bgop", String(mixer.backgroundPct)); }
     if (selected.value) { q.set("place", selected.value.id); }
@@ -638,7 +659,7 @@ function syncUrl(): void {
     history.replaceState(null, "", `${location.pathname}?${q.toString().replace(/%3A/g, ":").replace(/%2C/g, ",")}`);
   }, 400);
 }
-watch([() => engine.raRad, () => engine.decRad, () => engine.zoomDeg, () => mixer.urlValue, () => mixer.mode, () => mixer.additive, () => mixer.backgroundPct, selected, bgName], syncUrl);
+watch([() => engine.raRad, () => engine.decRad, () => engine.zoomDeg, () => mixer.urlValue, () => mixer.mode, () => mixer.scrubIndex, () => mixer.additive, () => mixer.backgroundPct, selected, bgName], syncUrl);
 
 async function share(): Promise<void> {
   window.clearTimeout(urlTimer);
@@ -675,7 +696,12 @@ function onKey(e: KeyboardEvent): void {
   if (typing || e.ctrlKey || e.metaKey || e.altKey) { return; }
   if (e.key === "/") { e.preventDefault(); searchBox.value?.focus(); }
   else if (e.key === "m" || e.key === "M") { if (isPhone.value) { openSheet("mixer", "half"); } else { dockOpen.value = !dockOpen.value; } }
-  else if ((e.key === "]" || e.key === "[") && mixer.count > 1) {
+  else if ((e.key === "]" || e.key === "[") && mixer.mode === "scrub" && mixer.reel.length > 1) {
+    mixer.stepScrub(e.key === "]" ? 1 : -1);
+  } else if (e.key === " " && mixer.mode === "scrub" && mixer.reel.length > 1) {
+    e.preventDefault();
+    if (mixer.playing) { mixer.pause(); } else { mixer.play(); }
+  } else if ((e.key === "]" || e.key === "[") && mixer.count > 1) {
     const p = mixer.sweep, n = mixer.count - 1;
     mixer.setSweep(e.key === "]" ? Math.min(n, Math.floor(p + 1e-6) + 1) : Math.max(0, Math.ceil(p - 1e-6) - 1));
   }
@@ -740,10 +766,15 @@ async function boot(): Promise<void> {
     measure();
 
     const layers = stringParam("layers");
-    if (layers) { await mixer.restore(layers, (id) => byId.get(id)); }
     const mode = stringParam("mode");
+    // Scrub before restoring a reel, so its images don't all load at once.
+    if (mode === "scrub") { mixer.setMode("scrub"); }
+    if (layers) { await mixer.restore(layers, (id) => byId.get(id)); }
     if (mode === "blink" || mode === "swipe") { mixer.setMode(mode); }
-    if (stringParam("blend") === "add") { mixer.setAdditive(true); }
+    if (mode === "scrub") { mixer.setScrub(numberParam("pos") ?? 0); }
+    // "Add light" is hidden for now (see MixerPanel.vue); without its toggle a
+    // ?blend=add link would turn it on with no way to turn it off.
+    // if (stringParam("blend") === "add") { mixer.setAdditive(true); }
     const bgop = numberParam("bgop");
     if (bgop !== null) { mixer.setBackgroundPct(bgop); }
     const placeId = stringParam("place");
@@ -754,7 +785,7 @@ async function boot(): Promise<void> {
 
     if (stringParam("debug") !== null) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).wwtNext = { engine, mixer, byId, result, images, openPlace, whatsHere, refineFootprint, footprintCorners, overlay: () => overlay };
+      (window as any).wwtNext = { engine, mixer, engineLayerStates, scrubAll, byId, result, images, openPlace, whatsHere, refineFootprint, footprintCorners, overlay: () => overlay };
     }
   } catch (err) {
     console.error("[wwt-next] startup failed", err);
@@ -793,6 +824,7 @@ onBeforeUnmount(() => {
 .topbar > * { pointer-events: auto; }
 .brand { display: flex; align-items: center; gap: 8px; color: var(--fg); text-decoration: none; flex: none; background: var(--glass); border: 1px solid var(--line); border-radius: 21px; padding: 6px 12px 6px 7px; height: 42px; }
 .brand-name { font: 700 0.95rem var(--font-display); white-space: nowrap; }
+.brand-logo { display: block; flex: none; }
 .desk .search { max-width: 560px; }
 .top-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex: none; }
 .ib.big { width: 42px; height: 42px; border-radius: 50%; background: var(--glass); border-color: var(--line); }

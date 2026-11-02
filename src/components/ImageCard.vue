@@ -9,13 +9,14 @@
     <div class="card-body">
       <div class="card-tags">
         <span v-if="place.source" class="tag" :style="{ color: sourceColor(place.source) }">{{ place.source }}</span>
-        <span v-if="place.study" class="tag band">{{ band }}</span>
+        <span v-if="place.band" class="tag band" :style="{ color: BAND_COLORS[place.band.band] }">{{ place.band.band }}</span>
       </div>
       <h2 :id="titleId" class="card-title">{{ place.name }}</h2>
       <p v-if="otherNames" class="card-aka">Also: {{ otherNames }}</p>
       <dl class="card-facts">
         <div><dt>Where</dt><dd>{{ constellation }}</dd></div>
         <div><dt>Size</dt><dd>{{ place.study ? formatSize(place.sizeDeg) : "—" }}</dd></div>
+        <div v-if="place.band" class="wide"><dt>Wavelength</dt><dd>{{ place.band.band }} <span class="card-basis">({{ bandBasisText(place.band.basis) }})</span></dd></div>
         <div class="wide"><dt>Position</dt><dd class="mono">{{ formatRA(place.raHours * 15) }} {{ formatDec(place.decDeg) }}</dd></div>
       </dl>
       <p v-if="place.description" class="card-desc">{{ place.description }}</p>
@@ -39,7 +40,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { SkyPlace } from "../catalog/types";
-import { BANDPASS_LABELS } from "../catalog/types";
+import { BAND_COLORS, bandBasisText } from "../catalog/bands";
 import { sourceColor } from "../catalog/sources";
 import { constellationName, formatDec, formatRA, formatSize } from "../sky";
 import Thumb from "./Thumb.vue";
@@ -50,7 +51,6 @@ const emit = defineEmits<{
 }>();
 
 const titleId = computed(() => `card-title-${props.place.id}`);
-const band = computed(() => BANDPASS_LABELS[props.place.study?.bandPass ?? 3] ?? "Visible");
 const otherNames = computed(() => props.place.names.slice(1, 5).join(", "));
 const constellation = computed(() => props.place.constellation === "SolarSystem" ? "Solar System" : constellationName(props.place.constellation));
 </script>
@@ -62,7 +62,7 @@ const constellation = computed(() => props.place.constellation === "SolarSystem"
 .card-close { position: absolute; top: 8px; right: 8px; background: rgba(7, 11, 20, 0.85); }
 .card-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 2px 4px; }
 .card-tags { display: flex; gap: 6px; }
-.tag.band { color: var(--sky); }
+.card-basis { color: var(--muted); font-size: 0.78rem; }
 .card-title { margin: 0; font: 700 1.15rem/1.2 var(--font-display); text-wrap: balance; }
 .card-aka { margin: 0; color: var(--muted); font-size: 0.82rem; }
 .card-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0; }
