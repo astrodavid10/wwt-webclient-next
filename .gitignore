@@ -1,0 +1,41 @@
+**/dist/*
+!./dist/index.html
+
+node_modules/
+tsconfig.tsbuildinfo
+/.vs/
+*.log
+
+**/.yarn/*
+!**/.yarn/releases
+!**/.yarn/patches
+!**/.yarn/plugins
+!**/.yarn/sdks
+!**/.yarn/versions
+
+.pnp.*
+.DS_Store
+
+.DS_Store
+*/.DS_Store
+*/*/.DS_Store
+.vscode/settings.json
+
+**/tests_output/**
+
+*.env
+
+# Local tool settings
+.claude/settings.local.json
+
+# Playwright
+/test-results/
+/playwright-report/
+
+# Per-machine build settings (VUE_APP_PUBLIC_URL etc.)
+.env.local
+.env.*.local
+
+# Working notes stay local; only README.md is published
+*.md
+!README.md

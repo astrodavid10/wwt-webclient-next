@@ -1,0 +1,69 @@
+// Global tokens and base styles. Dark UI over the sky; one gold accent
+// (selection, "yours"), sky blue for links and secondary info.
+// System fonts only, so the interface is ready as soon as the first tiles are.
+
+:root {
+  --ink: #070b14;
+  --panel: rgba(12, 18, 31, 0.94);
+  --panel-solid: #0c121f;
+  --panel-2: #141d31;
+  --panel-3: #1c2840;
+  --glass: rgba(12, 18, 31, 0.86);
+  --line: #24314b;
+  --line-strong: #34446a;
+  --fg: #e6ebf4;
+  --muted: #9aa7bf;
+  --gold: #f0ab52;
+  --gold-dim: #6b5530;
+  --sky: #99c8ff;
+  --font-display: "Segoe UI Variable Display", "SF Pro Display", system-ui, sans-serif;
+  --font-body: "Segoe UI Variable Text", "SF Pro Text", system-ui, -apple-system, Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --gap: 12px;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font-family: var(--font-body); font-size: 15px; -webkit-text-size-adjust: 100%; }
+#app { position: fixed; inset: 0; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-size: 0.86em; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+input[type="range"] { accent-color: var(--gold); min-width: 0; }
+input[type="checkbox"] { accent-color: var(--gold); }
+
+.ib {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center; padding: 0;
+  border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer;
+}
+.ib:hover:not(:disabled) { color: var(--fg); border-color: var(--line-strong); }
+.ib[aria-pressed="true"] { color: var(--gold); border-color: var(--gold-dim); }
+.ib:disabled { opacity: 0.35; cursor: default; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 9px;
+  border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--fg); cursor: pointer; font-size: 0.86rem;
+}
+.btn:hover:not(:disabled) { border-color: var(--sky); }
+.btn.primary { background: var(--gold); border-color: var(--gold); color: #1b1206; font-weight: 700; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.link-btn { background: none; border: 0; color: var(--sky); cursor: pointer; padding: 4px; font-size: 0.85rem; }
+
+.tag { font: 600 0.68rem/1.4 var(--font-mono); padding: 0 6px; border-radius: 4px; border: 1px solid currentColor; flex: none; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { background: transparent; border: 0; padding: 7px 12px; cursor: pointer; font: 0.8rem var(--font-mono); color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--panel-3); color: var(--fg); }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
