@@ -142,7 +142,8 @@ export function refineFootprint(place: SkyPlace): Promise<[number, number][] | n
       const across = s.widthFactor === 1 ? 2 : 1;
       const bmps: ImageBitmap[] = [];
       for (let x = 0; x < across; x++) {
-        const url = s.url.replace("{1}", "0").replace("{2}", String(x)).replace("{3}", "0");
+        // Templates can repeat a placeholder ("{1}/{3}/{3}_{2}.png").
+        const url = s.url.replace(/\{1\}/g, "0").replace(/\{2\}/g, String(x)).replace(/\{3\}/g, "0");
         // Cache-bust: a thumbnail <img> loaded without CORS would taint the canvas.
         const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}fp=1`, { mode: "cors" });
         if (!res.ok) { return null; }

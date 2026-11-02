@@ -230,7 +230,7 @@ import { engineStore } from "@wwtelescope/engine-pinia";
 import { loadSearchIndex } from "./catalog/searchIndex";
 import { computeInView, InViewResult } from "./catalog/inView";
 import { buildNameIndex, NameIndexEntry, ConstellationEntry, SearchHit } from "./catalog/search";
-import { footprintSize, refineFootprint, footprintCorners } from "./catalog/imagery";
+import { footprintSize, refineFootprint, footprintCorners, offsetToRaDec } from "./catalog/imagery";
 import { sourceColor } from "./catalog/sources";
 import type { SkyPlace } from "./catalog/types";
 import { useMixer } from "./mixer";
@@ -444,24 +444,49 @@ function startSheetDrag(ev: PointerEvent): void {
 
 // ── opening images ──────────────────────────────────────────────────────────
 function framingFov(p: SkyPlace): number {
-  let fov = p.zoom > 0 ? p.zoom / 6 : p.study ? Math.max(footprintSize(p) * 1.3, 0.01) : 1;
-  // Catalogue framings assume a landscape screen; the engine's FOV is vertical,
-  // so widen it on portrait screens to keep the image's width in view.
-  const aspect = viewport.w / Math.max(1, viewport.h);
-  if (aspect < 1) { fov /= Math.max(0.5, aspect); }
-  return fov;
+  return p.zoom > 0 ? p.zoom / 6 : p.study ? Math.max(footprintSize(p) * 1.1, 0.01) : 1;
 }
 
 /** Fly to a place, show its card, and (for images) show it on top of the mix as a preview. */
+/**
+ * Camera target that puts (ra, dec) at the centre of the sky left visible by
+ * the panels, with `fov` fitting that area's height. The engine always
+ * centres on the canvas, so the camera aims a little off the object.
+ */
+function frameInFreeArea(ra: number, dec: number, fov: number): [number, number, number] {
+  const w = viewport.w, h = viewport.h;
+  const right = viewport.right;
+  let left = 0, bottom = viewport.bottom;
+  if (!isPhone.value) {
+    if (exploreOpen.value) { left = Math.min(772, w - 380) + 12; }
+    else if (selected.value) { left = 364; }
+  } else if (!sideSheet.value) {
+    bottom = snapHeight(sheetSnap.value === "peek" ? "half" : sheetSnap.value);
+  }
+  const top = viewport.top;
+  const fw = w - left - right, fh = h - top - bottom;
+  if (fw < 120 || fh < 120) { return [ra, dec, fov]; }
+  // Catalogue framings are a vertical FOV for a landscape screen: fit that
+  // height into the free height, and ~1.3x it into the free width.
+  const canvasFov = Math.max(fov * h / fh, fov * 1.3 * h / fw);
+  const s = canvasFov / h;
+  const dx = left + fw / 2 - w / 2, dy = top + fh / 2 - h / 2;
+  const [cRa, cDec] = offsetToRaDec(ra, dec, dx * s, dy * s);
+  return [cRa, cDec, canvasFov];
+}
+
 function openPlace(p: SkyPlace, opts: { addToMix?: boolean } = {}): void {
   selected.value = markRaw(p);
-  const ra = p.study ? p.study.centerX : p.raHours * 15;
-  const dec = p.study ? p.study.centerY : p.decDeg;
-  const ms = skyFlyTo(ra, dec, framingFov(p));
+  if (isPhone.value) { sheetTab.value = "card"; if (sheetSnap.value === "full") { sheetSnap.value = "half"; } }
+  const [ra, dec, fov] = frameInFreeArea(
+    p.study ? p.study.centerX : p.raHours * 15,
+    p.study ? p.study.centerY : p.decDeg,
+    framingFov(p),
+  );
+  const ms = skyFlyTo(ra, dec, fov);
   if (p.study && opts.addToMix !== false) {
     mixer.add(p, { preview: true, fadeAfterMs: ms ? ms * 0.7 : 0 });
   }
-  if (isPhone.value) { sheetTab.value = "card"; if (sheetSnap.value === "full") { sheetSnap.value = "half"; } }
 }
 function selectPlace(p: SkyPlace): void {
   selected.value = markRaw(p);
@@ -726,7 +751,7 @@ async function boot(): Promise<void> {
 
     if (stringParam("debug") !== null) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).wwtNext = { engine, mixer, byId, result, images, openPlace, whatsHere, refineFootprint, footprintCorners };
+      (window as any).wwtNext = { engine, mixer, byId, result, images, openPlace, whatsHere, refineFootprint, footprintCorners, overlay: () => overlay };
     }
   } catch (err) {
     console.error("[wwt-next] startup failed", err);
