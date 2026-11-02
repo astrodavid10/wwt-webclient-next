@@ -42,6 +42,8 @@ export interface SkyPlace {
   study: StudyInfo | null;
   /** Telescope / source tag inferred from the URL and credits ("JWST", "HST"...). */
   source: string;
+  /** Plain-text description, when the place came from a WTML that has one. */
+  description?: string;
 }
 
 export const BANDPASS_LABELS = ["Gamma", "X-ray", "Ultraviolet", "Visible", "H-alpha", "Infrared", "Microwave", "Radio", "Visible"];

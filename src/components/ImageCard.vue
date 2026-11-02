@@ -18,6 +18,7 @@
         <div><dt>Size</dt><dd>{{ place.study ? formatSize(place.sizeDeg) : "—" }}</dd></div>
         <div class="wide"><dt>Position</dt><dd class="mono">{{ formatRA(place.raHours * 15) }} {{ formatDec(place.decDeg) }}</dd></div>
       </dl>
+      <p v-if="place.description" class="card-desc">{{ place.description }}</p>
       <p v-if="place.study?.credits" class="card-credits">{{ place.study.credits }}</p>
       <div class="card-actions">
         <button type="button" class="btn" @click="emit('fly')"><font-awesome-icon icon="crosshairs" /> Go to</button>
@@ -69,6 +70,7 @@ const constellation = computed(() => props.place.constellation === "SolarSystem"
 .card-facts .wide { grid-column: 1 / -1; }
 .card-facts dt { font: 0.68rem var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .card-facts dd { margin: 0; font-size: 0.9rem; }
+.card-desc { margin: 0; font-size: 0.88rem; line-height: 1.45; max-height: 12em; overflow-y: auto; }
 .card-credits { margin: 0; font-size: 0.78rem; color: var(--muted); max-height: 5.5em; overflow-y: auto; }
 .card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .card-link { color: var(--sky); font-size: 0.86rem; }

@@ -1,5 +1,16 @@
 <template>
   <div class="inview" :class="{ strip: layout === 'strip' }">
+    <div v-if="result && sources.length > 1" class="iv-filters" role="group" aria-label="Filter by telescope">
+      <button type="button" class="chip" :aria-pressed="!filter" @click="filter = ''">All</button>
+      <button
+        v-for="s in sources"
+        :key="s.tag"
+        type="button"
+        class="chip"
+        :aria-pressed="filter === s.tag"
+        @click="filter = filter === s.tag ? '' : s.tag"
+      ><i :style="{ background: sourceColor(s.tag) }"></i>{{ s.tag || "Other" }} <span class="chip-n">{{ s.n }}</span></button>
+    </div>
     <p v-if="!result" class="iv-empty">Loading the image index…</p>
     <template v-else-if="layout === 'strip'">
       <div class="iv-strip" role="list" aria-label="Images that fit this view">
@@ -8,7 +19,6 @@
             type="button"
             class="iv-card-open"
             :class="{ sel: item.place.id === selectedId }"
-            :aria-label="`Open ${item.place.name}`"
             @click="emit('open', item.place)"
             @pointerenter="emit('hover', item.place.id)"
             @pointerleave="emit('hover', null)"
@@ -40,7 +50,6 @@
             <button
               type="button"
               class="iv-open"
-              :aria-label="`Open ${item.place.name}`"
               @click="emit('open', item.place)"
               @focus="emit('hover', item.place.id)"
               @blur="emit('hover', null)"
@@ -80,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import type { InViewResult, InViewItem } from "../catalog/inView";
 import type { SkyPlace } from "../catalog/types";
 import { sourceColor } from "../catalog/sources";
@@ -102,6 +111,18 @@ const emit = defineEmits<{
 }>();
 
 const STEP = 12;
+const filter = ref<string | null>("");
+const keep = (i: InViewItem) => !filter.value || i.place.source === filter.value;
+/** Telescopes present in this view, most images first. */
+const sources = computed(() => {
+  const r = props.result;
+  if (!r) { return []; }
+  const n = new Map<string, number>();
+  for (const i of [...r.fit, ...r.small, ...r.wide]) { n.set(i.place.source, (n.get(i.place.source) ?? 0) + 1); }
+  return Array.from(n, ([tag, count]) => ({ tag, n: count })).sort((a, b) => (a.tag === "" ? 1 : 0) - (b.tag === "" ? 1 : 0) || b.n - a.n);
+});
+// Drop a filter that no longer matches anything in view.
+watch(sources, (s) => { if (filter.value && !s.some((x) => x.tag === filter.value)) { filter.value = ""; } });
 const shown = reactive<Record<string, number>>({ fit: 12, wide: 4, small: 6 });
 function shownCount(id: string): number { return shown[id] ?? STEP; }
 function expand(id: string): void { shown[id] = shownCount(id) + STEP; }
@@ -117,22 +138,28 @@ const groups = computed<Group[]>(() => {
   const r = props.result;
   if (!r) { return []; }
   const out: Group[] = [];
-  if (r.fit.length) { out.push({ id: "fit", title: "Fits this view", items: r.fit }); }
-  if (r.small.length) { out.push({ id: "small", title: "Zoom in for detail", hint: "Small, detailed images inside this view.", items: r.small }); }
-  if (r.wide.length) { out.push({ id: "wide", title: "Wider fields", hint: "Images bigger than the view that contain it.", items: r.wide }); }
+  const fit = r.fit.filter(keep), small = r.small.filter(keep), wide = r.wide.filter(keep);
+  if (fit.length) { out.push({ id: "fit", title: "Fits this view", items: fit }); }
+  if (small.length) { out.push({ id: "small", title: "Zoom in for detail", hint: "Small, detailed images inside this view.", items: small }); }
+  if (wide.length) { out.push({ id: "wide", title: "Wider fields", hint: "Images bigger than the view that contain it.", items: wide }); }
   return out;
 });
 
 const stripItems = computed(() => {
   const r = props.result;
   if (!r) { return []; }
-  return [...r.fit, ...r.small, ...r.wide].slice(0, 24);
+  return [...r.fit, ...r.small, ...r.wide].filter(keep).slice(0, 24);
 });
 </script>
 
 <style lang="less">
 .inview { display: flex; flex-direction: column; gap: 4px; }
 .iv-empty { color: var(--muted); padding: 12px; margin: 0; font-size: 0.9rem; }
+.iv-filters { display: flex; gap: 6px; overflow-x: auto; padding: 8px 4px 4px; scrollbar-width: none; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font: 0.74rem var(--font-mono); }
+.chip i { width: 8px; height: 8px; border-radius: 2px; }
+.chip[aria-pressed="true"] { color: var(--fg); border-color: var(--gold-dim); background: var(--panel-3); }
+.chip-n { opacity: 0.7; }
 .iv-group { display: flex; flex-direction: column; }
 .iv-group-title {
   display: flex; justify-content: space-between; align-items: baseline;
