@@ -27,6 +27,10 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font-family: var(--font-body); font-size: 15px; -webkit-text-size-adjust: 100%; }
 #app { position: fixed; inset: 0; }
 button, input, select { font: inherit; color: inherit; }
+// iOS Safari zooms the page into any text field or select under 16px on focus.
+@media (pointer: coarse) {
+  input[type="text"], input[type="search"], input:not([type]), select { font-size: 16px !important; }
+}
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .mono { font-family: var(--font-mono); font-size: 0.86em; }
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -11,9 +11,20 @@
         @click="filter = filter === s.tag ? null : s.tag"
       ><i :style="{ background: sourceColor(s.tag) }"></i>{{ s.tag || "Other" }} <span class="chip-n">{{ s.n }}</span></button>
     </div>
+    <div v-if="result && scrubPlaces.length > 1 && layout === 'list'" class="iv-actions">
+      <button type="button" class="btn iv-scrub" @click="emit('scrubAll', scrubPlaces)">
+        <font-awesome-icon icon="film" /> {{ scrubLabel }}
+      </button>
+    </div>
     <p v-if="!result" class="iv-empty">Loading the image index…</p>
     <template v-else-if="layout === 'strip'">
       <div class="iv-strip" role="list" aria-label="Images that fit this view">
+        <div v-if="scrubPlaces.length > 1" class="iv-card" role="listitem">
+          <button type="button" class="iv-card-open iv-card-scrub" @click="emit('scrubAll', scrubPlaces)">
+            <span class="iv-card-img"><font-awesome-icon icon="film" /></span>
+            <span class="iv-card-name">{{ scrubLabel }}</span>
+          </button>
+        </div>
         <div v-for="item in stripItems" :key="item.place.id" class="iv-card" role="listitem">
           <button
             type="button"
@@ -25,7 +36,7 @@
           >
             <span class="iv-card-img"><thumb :place="item.place" /></span>
             <span class="iv-card-name">{{ item.place.name }}</span>
-            <span class="iv-meta"><i :style="{ background: sourceColor(item.place.source) }"></i>{{ item.place.source || "Image" }} · {{ formatSize(item.place.sizeDeg) }}</span>
+            <span class="iv-meta"><i :style="{ background: sourceColor(item.place.source) }"></i>{{ item.place.source || "Image" }}<template v-if="item.place.band"> · {{ BAND_SHORT[item.place.band.band] }}</template> · {{ formatSize(item.place.sizeDeg) }}</span>
           </button>
         </div>
         <p v-if="!stripItems.length" class="iv-empty">No images here. Zoom out or follow an arrow at the edge of the sky.</p>
@@ -58,7 +69,7 @@
               <span class="iv-text">
                 <span class="iv-name">{{ item.place.name }}</span>
                 <span class="iv-meta">
-                  <i :style="{ background: sourceColor(item.place.source) }"></i>{{ item.place.source || "Image" }}
+                  <i :style="{ background: sourceColor(item.place.source) }"></i>{{ item.place.source || "Image" }}<template v-if="item.place.band"> · {{ BAND_SHORT[item.place.band.band] }}</template>
                   · {{ formatSize(item.place.sizeDeg) }}<template v-if="item.dupes.length"> · {{ item.dupes.length + 1 }} versions</template>
                 </span>
               </span>
@@ -93,7 +104,9 @@ import { computed, reactive, ref, watch } from "vue";
 import type { InViewResult, InViewItem } from "../catalog/inView";
 import type { SkyPlace } from "../catalog/types";
 import { sourceColor } from "../catalog/sources";
+import { BAND_SHORT } from "../catalog/bands";
 import { formatSize } from "../sky";
+import { MAX_REEL } from "../mixer";
 import Thumb from "./Thumb.vue";
 
 const props = defineProps<{
@@ -108,6 +121,7 @@ const emit = defineEmits<{
   (e: "hover", id: string | null): void;
   (e: "open", place: SkyPlace): void;
   (e: "add", place: SkyPlace): void;
+  (e: "scrubAll", places: SkyPlace[]): void;
 }>();
 
 const STEP = 12;
@@ -144,6 +158,23 @@ const groups = computed<Group[]>(() => {
   if (small.length) { out.push({ id: "small", title: "Zoom in for detail", hint: "Small, detailed images inside this view.", items: small }); }
   if (wide.length) { out.push({ id: "wide", title: "Wider fields", hint: "Images bigger than the view that contain it.", items: wide }); }
   return out;
+});
+
+/**
+ * What "Scrub all" puts in the mixer: everything listed (with the telescope
+ * filter applied), best fits first, then detail images, then wider fields,
+ * up to MAX_REEL. Duplicate versions are already merged.
+ */
+const allPlaces = computed(() => {
+  const r = props.result;
+  if (!r) { return []; }
+  return [...r.fit, ...r.small, ...r.wide].filter(keep).map((i) => i.place).filter((p) => p.study);
+});
+const scrubPlaces = computed(() => allPlaces.value.slice(0, MAX_REEL));
+const scrubLabel = computed(() => {
+  const n = allPlaces.value.length;
+  const what = filter.value ? `${filter.value || "other"} images` : "images";
+  return n > MAX_REEL ? `Scrub the best ${MAX_REEL} of ${n} ${what}` : `Scrub all ${n} ${what} in view`;
 });
 
 const stripItems = computed(() => {
@@ -191,6 +222,9 @@ const stripItems = computed(() => {
   align-self: flex-start; margin: 4px 8px 8px 66px; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--sky); cursor: pointer; font-size: 0.8rem;
 }
+.iv-actions { display: flex; padding: 6px 4px 2px; }
+.iv-scrub { width: 100%; justify-content: center; }
+.iv-card-scrub .iv-card-img { display: grid; place-items: center; color: var(--gold); font-size: 1.4rem; background: var(--panel-2); }
 .iv-strip { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; }
 .iv-card { flex: none; width: 112px; scroll-snap-align: start; }
 .iv-card-open {

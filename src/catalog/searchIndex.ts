@@ -4,12 +4,13 @@
 // same one the classic client loads, so it's injected as a <script>.
 
 import type { SkyPlace, StudyInfo } from "./types";
+import { bandFor, parseBandPass } from "./bands";
 
 export const SEARCH_DATA_URL = "https://web.wwtassets.org/data/searchdata_v2.min.js";
 
 interface RawFgi {
   n: string; u: string; bd: number; cX: number; cY: number;
-  ct?: string; cu?: string; tu?: string; bp?: number; pr?: number; bl?: number; ft?: string;
+  ct?: string; cu?: string; tu?: string; bp?: number | string; pr?: number; bl?: number; ft?: string;
   lv?: number; bu?: boolean; q?: string; oX?: number; oY?: number; r?: number; wf?: number;
 }
 interface RawPlace { n: string; r: number; d: number; c?: number; z?: number; fgi?: RawFgi }
@@ -53,6 +54,7 @@ const SOURCES: [string, RegExp][] = [
   ["NOIRLab", /noirlab|noao|kpno|ctio|gemini|kitt peak|cerro tololo/i],
   ["SOFIA", /sofia/i],
   ["WISE", /\bwise\b/i],
+  ["NRAO", /nrao|\bvla\b|\bvlba\b|green bank/i],
 ];
 
 /**
@@ -84,7 +86,7 @@ function studyFrom(f: RawFgi): StudyInfo {
     bottomsUp: f.bu ?? false,
     fileType: f.ft ?? ".png",
     projection: f.pr ?? 2,  // ProjectionType.tan
-    bandPass: f.bp ?? 3,    // BandPass.visible
+    bandPass: parseBandPass(f.bp),  // stored as a name ("IR"); absent = Visible
     quadTreeMap: f.q ?? "",
     thumbUrl: https(f.tu),
     credits: (f.ct ?? "").replace(/&amp;/g, "&"),
@@ -107,6 +109,7 @@ export function parseSearchData(data: RawData): SkyPlace[] {
       let id = `${slug(name)}-${fnv(study ? study.url : `${name}|${p.r}|${p.d}`).slice(0, 5)}`;
       while (seenIds.has(id)) { id += "x"; }
       seenIds.add(id);
+      const source = study ? sourceFor(p.n, study) : "";
       out.push({
         id, name, names,
         raHours: p.r,
@@ -117,7 +120,8 @@ export function parseSearchData(data: RawData): SkyPlace[] {
         sizeDeg,
         vec: unitVector(p.r, p.d),
         study,
-        source: study ? sourceFor(p.n, study) : "",
+        source,
+        band: study ? bandFor(p.n, study.bandPass, source) : null,
       });
     }
   }

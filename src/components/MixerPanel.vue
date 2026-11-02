@@ -1,6 +1,12 @@
 <template>
   <div class="mixer" :class="variant">
-    <!-- Compact bar: what's in the mix and the sweep, one row. -->
+    <!-- Compact bar: what's in the mix and the sweep (or the scrub reel), one row. -->
+    <div v-if="variant === 'bar' && scrubbing" class="mx-now bar-now" aria-live="polite">
+      <span class="mx-now-n">{{ mixer.scrubIndex + 1 }}/{{ mixer.reel.length }}</span>
+      <span v-if="current?.place.source" class="tag" :style="{ color: sourceColor(current.place.source) }">{{ current.place.source }}</span>
+      <span v-if="current?.place.band" class="tag" :style="{ color: BAND_COLORS[current.place.band.band] }">{{ BAND_SHORT[current.place.band.band] }}</span>
+      <span class="mx-title">{{ current?.place.name }}</span>
+    </div>
     <div v-if="variant === 'bar'" class="mx-bar">
       <button type="button" class="mx-dots" :aria-label="`Open the mixer, ${mixer.count} images`" @click="emit('expand')">
         <span v-for="l in topFirst.slice(0, 4)" :key="l.place.id" class="mx-dot" :style="{ borderColor: sourceColor(l.place.source) }">
@@ -8,8 +14,23 @@
         </span>
         <span class="mx-count">{{ mixer.count }}</span>
       </button>
+      <template v-if="scrubbing">
+        <button type="button" class="ib" :aria-label="mixer.playing ? 'Pause' : 'Play through the images'" @click="togglePlay">
+          <font-awesome-icon :icon="mixer.playing ? 'pause' : 'play'" />
+        </button>
+        <input
+          class="mx-sweep"
+          type="range"
+          min="0"
+          :max="(mixer.reel.length - 1) * 100"
+          :value="Math.round(mixer.scrubPos * 100)"
+          aria-label="Scrub through the images"
+          :aria-valuetext="scrubText"
+          @input="onScrub"
+        />
+      </template>
       <input
-        v-if="mixer.count > 1"
+        v-else-if="mixer.count > 1"
         class="mx-sweep"
         type="range"
         min="0"
@@ -30,7 +51,7 @@
         <button v-if="mixer.count" type="button" class="link-btn" @click="mixer.clear()">Clear</button>
       </div>
 
-      <p v-if="!mixer.count" class="mx-empty">Open an image, or press <font-awesome-icon icon="plus" /> next to one in the list, to start a mix. The sweep slider then fades the images in from the bottom of the stack to the top.</p>
+      <p v-if="!mixer.count" class="mx-empty">Open an image, or press <font-awesome-icon icon="plus" /> next to one in the list, to start a mix. The sweep slider then fades the images in from the bottom of the stack to the top. To step through everything in view, use <b>Scrub all</b> in the In view list.</p>
 
       <div v-if="mixer.count > 1 && mixer.mode === 'mix'" class="mx-sweep-wrap">
         <label for="mx-sweep">Sweep through the stack</label>
@@ -49,6 +70,55 @@
         </div>
       </div>
 
+      <div v-if="mixer.mode === 'scrub' && mixer.reel.length" class="mx-sweep-wrap mx-scrub">
+        <div class="mx-now" aria-live="polite">
+          <span class="mx-now-n">{{ mixer.scrubIndex + 1 }}/{{ mixer.reel.length }}</span>
+          <span v-if="current?.place.source" class="tag" :style="{ color: sourceColor(current.place.source) }">{{ current.place.source }}</span>
+          <span v-if="current?.place.band" class="tag" :style="{ color: BAND_COLORS[current.place.band.band] }">{{ BAND_SHORT[current.place.band.band] }}</span>
+          <span class="mx-title">{{ current?.place.name }}</span>
+        </div>
+        <div class="mx-scrub-row">
+          <button type="button" class="ib" aria-label="Previous image" :disabled="mixer.scrubPos <= 0" @click="mixer.stepScrub(-1)"><font-awesome-icon icon="backward-step" /></button>
+          <button type="button" class="ib" :aria-label="mixer.playing ? 'Pause' : 'Play through the images'" :disabled="mixer.reel.length < 2" @click="togglePlay">
+            <font-awesome-icon :icon="mixer.playing ? 'pause' : 'play'" />
+          </button>
+          <button type="button" class="ib" aria-label="Next image" :disabled="mixer.scrubPos >= mixer.reel.length - 1" @click="mixer.stepScrub(1)"><font-awesome-icon icon="forward-step" /></button>
+          <div class="mx-track">
+          <input
+            id="mx-scrub"
+            class="mx-sweep"
+            type="range"
+            min="0"
+            :max="Math.max(0, mixer.reel.length - 1) * 100"
+            :value="Math.round(mixer.scrubPos * 100)"
+            aria-label="Scrub through the images"
+            :aria-valuetext="scrubText"
+            @input="onScrub"
+          />
+          <div class="mx-ticks" aria-hidden="true">
+            <i v-for="(l, i) in mixer.reel" :key="l.place.id" :class="{ cur: i === mixer.scrubIndex }" :style="{ background: l.place.band ? BAND_COLORS[l.place.band.band] : undefined }"></i>
+          </div>
+          </div>
+        </div>
+        <div class="mx-scrub-opts">
+          <label>Order
+            <select :value="mixer.reelOrder" @change="mixer.sortReel(($event.target as HTMLSelectElement).value as ReelOrder)">
+              <option value="wavelength">Wavelength (short to long)</option>
+              <option value="size">Size (widest first)</option>
+              <option value="telescope">Telescope</option>
+              <option value="custom" disabled>As arranged</option>
+            </select>
+          </label>
+          <label>Speed
+            <select :value="mixer.playMs" @change="mixer.setPlayMs(Number(($event.target as HTMLSelectElement).value))">
+              <option :value="4500">Slow</option>
+              <option :value="2600">Medium</option>
+              <option :value="1400">Fast</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
       <div v-if="mixer.mode === 'swipe'" class="mx-sweep-wrap">
         <label for="mx-swipe">Swipe position</label>
         <input id="mx-swipe" type="range" min="0" max="100" :value="Math.round(mixer.swipeFrac * 100)" @input="onSwipe" />
@@ -60,13 +130,24 @@
       </div>
 
       <ol class="mx-layers" aria-label="Images in the mix, top of the stack first">
-        <li v-for="(l, i) in topFirst" :key="l.place.id" class="mx-layer" :class="{ off: !l.on || l.pct === 0, preview: !l.pinned }">
-          <button type="button" class="mx-thumb" :aria-label="`Show details for ${l.place.name}`" @click="emit('select', l.place)">
+        <li
+          v-for="(l, i) in topFirst"
+          :key="l.place.id"
+          class="mx-layer"
+          :class="{ off: scrubbing ? !l.on : !l.on || l.pct === 0, preview: !l.pinned, cur: scrubbing && l === current }"
+        >
+          <button
+            type="button"
+            class="mx-thumb"
+            :aria-label="scrubbing ? `Scrub to ${l.place.name}` : `Show details for ${l.place.name}`"
+            @click="scrubbing && l.on ? mixer.scrubTo(mixer.reel.indexOf(l)) : emit('select', l.place)"
+          >
             <thumb :place="l.place" />
           </button>
           <div class="mx-main">
             <div class="mx-name">
               <span class="tag" :style="{ color: sourceColor(l.place.source) }">{{ l.place.source || "IMG" }}</span>
+              <span v-if="l.place.band" class="tag" :style="{ color: BAND_COLORS[l.place.band.band] }">{{ BAND_SHORT[l.place.band.band] }}</span>
               <span class="mx-title" :title="l.place.name">{{ l.place.name }}</span>
               <span v-if="!l.pinned" class="mx-preview">preview</span>
             </div>
@@ -75,6 +156,7 @@
                 <font-awesome-icon :icon="l.on ? 'eye' : 'eye-slash'" />
               </button>
               <input
+                v-if="!scrubbing"
                 type="range"
                 min="0"
                 max="100"
@@ -83,8 +165,9 @@
                 :aria-valuetext="`${Math.round(l.pct)} percent`"
                 @input="mixer.setPct(l.place.id, Number(($event.target as HTMLInputElement).value))"
               />
-              <span class="mx-pct">{{ Math.round(l.pct) }}%</span>
-              <button type="button" class="ib" :aria-label="`Show only ${l.place.name}`" title="Show only this image" @click="mixer.solo(l.place.id)">
+              <span v-if="!scrubbing" class="mx-pct">{{ Math.round(l.pct) }}%</span>
+              <button v-else type="button" class="link-btn mx-info" :aria-label="`Details for ${l.place.name}`" @click="emit('select', l.place)">Details</button>
+              <button v-if="!scrubbing" type="button" class="ib" :aria-label="`Show only ${l.place.name}`" title="Show only this image" @click="mixer.solo(l.place.id)">
                 <font-awesome-icon icon="bullseye" />
               </button>
               <button type="button" class="ib" :disabled="i === 0" :aria-label="`Move ${l.place.name} up`" @click="mixer.move(l.place.id, 1)">
@@ -107,7 +190,18 @@
           <div class="mx-main">
             <div class="mx-name">
               <span class="tag">SURVEY</span>
-              <span class="mx-title">{{ backgroundName }}</span>
+              <span class="tag">{{ backgroundBand }}</span>
+              <select
+                v-if="backgrounds && backgrounds.length > 1"
+                class="mx-survey"
+                :value="backgroundName"
+                aria-label="Background survey"
+                @change="emit('background', ($event.target as HTMLSelectElement).value)"
+              >
+                <option v-if="!backgrounds.includes(backgroundName)" :value="backgroundName">{{ backgroundName }}</option>
+                <option v-for="n in backgrounds" :key="n" :value="n">{{ n }}</option>
+              </select>
+              <span v-else class="mx-title">{{ backgroundName }}</span>
             </div>
             <div class="mx-ctl">
               <input
@@ -125,10 +219,14 @@
         </li>
       </ol>
 
+      <!-- "Add light" (additive blending) is hidden for now. The store
+           (mixer.setAdditive) and the engine patch still support it; to bring
+           it back, restore this toggle and the ?blend=add line in App.vue.
       <label v-if="mixer.count > 1" class="mx-toggle">
         <input type="checkbox" :checked="mixer.additive" :disabled="mixer.mode !== 'mix'" @change="mixer.setAdditive(($event.target as HTMLInputElement).checked)" />
         Add light (additive blending, for combining wavelengths)
       </label>
+      -->
     </template>
   </div>
 </template>
@@ -136,23 +234,27 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { engineStore } from "@wwtelescope/engine-pinia";
-import { useMixer, MixMode } from "../mixer";
+import { useMixer, MixMode, ReelOrder } from "../mixer";
 import type { SkyPlace } from "../catalog/types";
 import { sourceColor } from "../catalog/sources";
+import { BAND_COLORS, BAND_SHORT, BANDPASS_LABELS } from "../catalog/bands";
 import Thumb from "./Thumb.vue";
 
-defineProps<{ variant: "bar" | "panel" }>();
-const emit = defineEmits<{ (e: "expand"): void; (e: "select", place: SkyPlace): void }>();
+defineProps<{ variant: "bar" | "panel"; backgrounds?: string[] }>();
+const emit = defineEmits<{ (e: "expand"): void; (e: "select", place: SkyPlace): void; (e: "background", name: string): void }>();
 
 const mixer = useMixer();
 const MODES: { id: MixMode; label: string; tip: string }[] = [
   { id: "mix", label: "Mix", tip: "Blend the images with their own opacities" },
+  { id: "scrub", label: "Scrub", tip: "Step through the images one at a time" },
   { id: "blink", label: "Blink", tip: "Flip between the images" },
   { id: "swipe", label: "Swipe", tip: "Compare the top two images side by side" },
 ];
 
 const topFirst = computed(() => [...mixer.layers].reverse());
 const engine = engineStore();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const backgroundBand = computed(() => { const b = (engine.backgroundImageset as any)?.get_bandPass?.(); return BANDPASS_LABELS[typeof b === "number" ? b : 3] ?? "Visible"; });
 const backgroundName = computed(() => engine.backgroundImageset?.get_name() ?? "Background survey");
 
 const sweepText = computed(() => {
@@ -160,6 +262,11 @@ const sweepText = computed(() => {
   return mixer.layers[i] ? `up to ${mixer.layers[i].place.name}` : "";
 });
 
+const scrubbing = computed(() => mixer.mode === "scrub" && mixer.reel.length > 0);
+const current = computed(() => mixer.reel[mixer.scrubIndex] ?? null);
+const scrubText = computed(() => current.value ? `${mixer.scrubIndex + 1} of ${mixer.reel.length}: ${current.value.place.name}` : "");
+function onScrub(e: Event): void { mixer.setScrub(Number((e.target as HTMLInputElement).value) / 100); }
+function togglePlay(): void { if (mixer.playing) { mixer.pause(); } else { mixer.play(); } }
 function onSweep(e: Event): void { mixer.setSweep(Number((e.target as HTMLInputElement).value) / 100); }
 function onSwipe(e: Event): void { mixer.setSwipe(Number((e.target as HTMLInputElement).value) / 100); }
 function onBlinkSpeed(e: Event): void { mixer.setBlinkMs(2800 - Number((e.target as HTMLInputElement).value)); }
@@ -197,5 +304,22 @@ function setMode(m: MixMode): void { mixer.setMode(m); }
 .mx-bg { background: transparent; border: 1px dashed var(--line); }
 .mx-thumb.bg { display: grid; place-items: center; color: var(--muted); cursor: default; }
 .mx-bg .tag { color: var(--muted); }
+.mx-survey { flex: 1; min-width: 0; max-width: 100%; font: inherit; font-size: 0.86rem; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; text-overflow: ellipsis; }
+.mx-survey option { background: #0b1220; color: #e8eef8; }
+.mx-now { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.mx-now .mx-title { font-weight: 600; }
+.mx-now-n { font: 600 0.74rem var(--font-mono); color: var(--gold); font-variant-numeric: tabular-nums; flex: none; }
+.mixer.bar { gap: 4px; }
+.bar-now { padding: 0 2px; }
+.mx-scrub-row { display: flex; align-items: center; gap: 4px; }
+.mx-track { flex: 1; min-width: 60px; display: flex; flex-direction: column; gap: 3px; }
+.mx-ticks { display: flex; gap: 2px; padding: 0 6px; }
+.mx-ticks i { flex: 1; height: 4px; border-radius: 2px; background: var(--line-strong); opacity: 0.55; }
+.mx-ticks i.cur { opacity: 1; outline: 1px solid var(--fg); }
+.mx-scrub-opts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.8rem; color: var(--muted); }
+.mx-scrub-opts label { display: flex; align-items: center; gap: 6px; }
+.mx-scrub-opts select { background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 6px; padding: 3px 4px; color: var(--fg); }
+.mx-layer.cur { background: var(--panel-3); box-shadow: inset 2px 0 0 var(--gold); }
+.mx-info { font-size: 0.78rem; margin-right: auto; }
 .mx-toggle { display: flex; gap: 8px; align-items: center; font-size: 0.84rem; color: var(--muted); cursor: pointer; }
 </style>

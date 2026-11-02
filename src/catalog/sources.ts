@@ -10,6 +10,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   Rubin: "#b8a1ff",
   SOFIA: "#d55e00",
   WISE: "#9ecae1",
+  NRAO: "#e0c9a6",
   "": "#9aa7bf",
 };
 

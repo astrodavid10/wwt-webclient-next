@@ -93,6 +93,25 @@ for (const [name, w, h] of SIZES) {
     await page.getByRole("button", { name: "View settings" }).click();
     await page.waitForTimeout(300);
     problems.push(...await check(page, "settings"));
+    await page.getByRole("button", { name: "View settings" }).click();
+
+    // Scrub everything in view: the mixer opens on the reel.
+    await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const a = (window as any).wwtNext;
+      const r = a.result.value;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await a.scrubAll([...r.fit, ...r.small, ...r.wide].map((i: any) => i.place).filter((p: any) => p.study).slice(0, 12));
+    });
+    await page.waitForTimeout(800);
+    problems.push(...await check(page, "scrub"));
+    // Phones: back to the In view tab, so the two-row scrub bar floats above the sheet.
+    const ivTab = page.getByRole("tab", { name: /In view/ });
+    if (await ivTab.count()) {
+      await ivTab.click();
+      await page.waitForTimeout(600);
+      problems.push(...await check(page, "scrub bar"));
+    }
 
     expect(problems).toEqual([]);
   });

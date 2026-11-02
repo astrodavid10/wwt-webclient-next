@@ -6,6 +6,7 @@
 
 import type { SkyPlace, StudyInfo } from "./types";
 import { fnv, https, slug, sourceFor, unitVector } from "./searchIndex";
+import { bandFor, parseBandPass } from "./bands";
 
 export interface FolderEntry { kind: "folder"; name: string; thumb: string; url: string; children: Entry[] | null }
 export interface PlaceEntry { kind: "place"; place: SkyPlace; thumb: string; allSky: boolean }
@@ -17,9 +18,6 @@ export const TOURS_ROOT = "https://web.wwtassets.org/webclient/assets/builtin-to
 
 const PROJECTIONS: Record<string, number> = {
   mercator: 0, equirectangular: 1, tan: 2, toast: 3, spherical: 4, skyimage: 5, plotted: 6, healpix: 7,
-};
-const BANDPASSES: Record<string, number> = {
-  gamma: 0, xray: 1, ultraviolet: 2, visible: 3, hydrogenalpha: 4, ir: 5, microwave: 6, radio: 7, visiblenight: 8,
 };
 
 function attr(el: Element, name: string): string { return el.getAttribute(name) ?? ""; }
@@ -50,7 +48,7 @@ function studyFromImageSet(is: Element): StudyInfo {
     bottomsUp: attr(is, "BottomsUp").toLowerCase() === "true",
     fileType: attr(is, "FileType") || ".png",
     projection: PROJECTIONS[attr(is, "Projection").toLowerCase()] ?? 2,
-    bandPass: BANDPASSES[attr(is, "BandPass").toLowerCase()] ?? 3,
+    bandPass: parseBandPass(attr(is, "BandPass")),
     quadTreeMap: attr(is, "QuadTreeMap"),
     thumbUrl: https(childText(is, "ThumbnailUrl")),
     credits: childText(is, "Credits"),
@@ -87,6 +85,7 @@ function placeFrom(el: Element, byUrl: Map<string, SkyPlace>): PlaceEntry | null
   const raHours = num(el, "RA", study ? study.centerX / 15 : 0);
   const decDeg = num(el, "Dec", study ? study.centerY : 0);
   const zoom = num(el, "ZoomLevel", -1);
+  const source = study ? sourceFor(name, study) : "";
   const place: SkyPlace = {
     id: `${slug(name)}-${fnv(study ? study.url : `${name}|${raHours}|${decDeg}`).slice(0, 5)}`,
     name,
@@ -98,7 +97,8 @@ function placeFrom(el: Element, byUrl: Map<string, SkyPlace>): PlaceEntry | null
     sizeDeg: study ? (zoom > 0 ? zoom / 6 : study.baseDeg) : 0,
     vec: unitVector(raHours, decDeg),
     study,
-    source: study ? sourceFor(name, study) : "",
+    source,
+    band: study ? bandFor(name, study.bandPass, source) : null,
     description: description || undefined,
   };
   return { kind: "place", place, thumb, allSky };

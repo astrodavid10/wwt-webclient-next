@@ -7,7 +7,7 @@ import {
   faArrowUpRightFromSquare, faBullseye, faCheck, faChevronDown, faChevronLeft, faChevronRight,
   faChevronUp, faCompass, faCrosshairs, faEye, faEyeSlash, faGear, faImage, faLayerGroup,
   faMagnifyingGlass, faPlus, faSatelliteDish, faShareNodes, faStar, faThumbtack, faXmark,
-  faFolderOpen, faRoute, faPlay, faArrowLeft, faTriangleExclamation,
+  faFolderOpen, faRoute, faPlay, faArrowLeft, faTriangleExclamation, faPause, faBackwardStep, faForwardStep, faFilm,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "./engine-patches";
@@ -19,7 +19,7 @@ library.add(
   faArrowUpRightFromSquare, faBullseye, faCheck, faChevronDown, faChevronLeft, faChevronRight,
   faChevronUp, faCompass, faCrosshairs, faEye, faEyeSlash, faGear, faImage, faLayerGroup,
   faMagnifyingGlass, faPlus, faSatelliteDish, faShareNodes, faStar, faThumbtack, faXmark,
-  faFolderOpen, faRoute, faPlay, faArrowLeft, faTriangleExclamation,
+  faFolderOpen, faRoute, faPlay, faArrowLeft, faTriangleExclamation, faPause, faBackwardStep, faForwardStep, faFilm,
 );
 
 // engine-pinia bundles its own copy of Pinia, so wwtPinia only serves the
