@@ -1,5 +1,5 @@
 <template>
-  <div ref="root" class="app" :class="{ phone: isPhone, desk: !isPhone }" @keydown="onKey">
+  <div ref="root" class="app" :class="{ phone: isPhone, desk: !isPhone, side: sideSheet }" @keydown="onKey">
     <!-- The sky. Never unmounted: a remounted WWT canvas renders black. -->
     <div
       class="sky"
@@ -24,7 +24,7 @@
     </div>
 
     <!-- Edge hints: good images just off-screen in that direction -->
-    <template v-if="ready && result">
+    <template v-if="ready && result && !tour">
       <button
         v-for="e in edgeButtons"
         :key="e.sector"
@@ -52,10 +52,13 @@
       />
       <div class="top-actions">
         <span v-if="!isPhone && ready" class="status mono" aria-live="off">{{ statusText }}</span>
+        <button type="button" class="ib big explore-btn" :aria-pressed="exploreOpen" aria-label="Explore collections and tours" title="Explore collections and tours" @click="exploreOpen = !exploreOpen">
+          <font-awesome-icon icon="compass" /><span v-if="!isPhone">Explore</span>
+        </button>
         <button type="button" class="ib big" :aria-pressed="settingsOpen" aria-label="View settings" title="View settings" @click="settingsOpen = !settingsOpen">
           <font-awesome-icon icon="gear" />
         </button>
-        <button type="button" class="ib big" aria-label="Share this view" title="Share this view" @click="share()">
+        <button v-if="!isPhone" type="button" class="ib big" aria-label="Share this view" title="Share this view" @click="share()">
           <font-awesome-icon icon="share-nodes" />
         </button>
       </div>
@@ -63,12 +66,37 @@
 
     <div v-if="isPhone && ready" class="status-chip mono">{{ statusText }}</div>
 
+    <explore-panel
+      v-if="exploreOpen && ready"
+      class="explore-wrap"
+      :by-url="byUrl"
+      :mixer-ids="mixer.ids"
+      @close="exploreOpen = false"
+      @open="onExploreOpen"
+      @add="addToMix($event)"
+      @background="useAsBackground"
+      @tour="playTour"
+    />
+
+    <div v-if="tour" class="tour-bar panel" role="region" aria-label="Guided tour">
+      <div class="tour-title">
+        <span class="tag">TOUR</span>
+        <span>{{ tour.title }}</span>
+      </div>
+      <button v-if="engine.isTourPlayerActive" type="button" class="btn" @click="engine.toggleTourPlayPauseState()">
+        {{ engine.isTourPlaying ? "Pause" : "Resume" }}
+      </button>
+      <span v-else class="muted-text">Tour finished</span>
+      <button type="button" class="btn primary" @click="exitTour"><font-awesome-icon icon="arrow-left" /> Back to exploring</button>
+    </div>
+
     <!-- Settings popover -->
     <div v-if="settingsOpen" class="settings panel" role="dialog" aria-label="View settings">
       <div class="settings-head">
         <h2>View</h2>
         <button type="button" class="ib" aria-label="Close settings" @click="settingsOpen = false"><font-awesome-icon icon="xmark" /></button>
       </div>
+      <button v-if="isPhone" type="button" class="btn" @click="settingsOpen = false; share()"><font-awesome-icon icon="share-nodes" /> Share this view</button>
       <label class="field">
         <span>Background survey</span>
         <select :value="bgName" @change="setBackground(($event.target as HTMLSelectElement).value)">
@@ -83,7 +111,7 @@
     </div>
 
     <!-- ===== Desktop layout ===== -->
-    <template v-if="!isPhone && ready">
+    <template v-if="!isPhone && ready && !tour">
       <aside v-if="selected" class="card-wrap panel" aria-label="Image details">
         <image-card
           :place="selected"
@@ -136,11 +164,11 @@
     </template>
 
     <!-- ===== Phone layout: one bottom sheet with tabs ===== -->
-    <template v-if="isPhone && ready">
-      <div v-if="mixer.count && sheetTab !== 'mixer'" class="phone-mixbar panel" :style="{ bottom: `calc(${sheetHeightCss} + 8px)` }">
+    <template v-if="isPhone && ready && !tour">
+      <div v-if="mixer.count && sheetTab !== 'mixer'" class="phone-mixbar panel" :style="sideSheet ? {} : { bottom: `calc(${sheetHeightCss} + 8px)` }">
         <mixer-panel variant="bar" @expand="openSheet('mixer', 'half')" />
       </div>
-      <section ref="sheet" class="sheet panel" :class="`snap-${sheetSnap}`" :style="{ height: sheetHeightCss }" aria-label="Images">
+      <section ref="sheet" class="sheet panel" :class="`snap-${sheetSnap}`" :style="sideSheet ? {} : { height: sheetHeightCss }" aria-label="Images">
         <div class="sheet-head" @pointerdown="startSheetDrag">
           <button type="button" class="grip" :aria-label="sheetSnap === 'peek' ? 'Expand the panel' : 'Shrink the panel'" @click="cycleSheet"></button>
           <div class="seg sheet-tabs" role="tablist">
@@ -153,7 +181,7 @@
           <in-view-panel
             v-if="sheetTab === 'inview'"
             :result="result"
-            :layout="sheetSnap === 'peek' ? 'strip' : 'list'"
+            :layout="sheetSnap === 'peek' && !sideSheet ? 'strip' : 'list'"
             :hovered-id="hoveredId"
             :selected-id="selected?.id ?? null"
             :mixer-ids="mixer.ids"
@@ -214,6 +242,9 @@ import SearchBox from "./components/SearchBox.vue";
 import InViewPanel from "./components/InViewPanel.vue";
 import MixerPanel from "./components/MixerPanel.vue";
 import ImageCard from "./components/ImageCard.vue";
+import ExplorePanel from "./components/ExplorePanel.vue";
+import type { TourEntry } from "./catalog/wtml";
+import { makeImageset } from "./catalog/imagery";
 
 const BG_WTML = "https://data1.wwtassets.org/packages/2023/06_pas/BackgroundImagery_v2.wtml";
 const DEFAULT_BG = "Digitized Sky Survey (Color)";
@@ -245,10 +276,17 @@ const result = shallowRef<InViewResult | null>(null);
 const hoveredId = ref<string | null>(null);
 const selected = shallowRef<SkyPlace | null>(null);
 
+/** Compact layout: one tabbed sheet instead of separate panels (phones, short screens). */
 const isPhone = ref(false);
+/** Compact and landscape: the sheet docks to the right edge instead of the bottom. */
+const sideSheet = ref(false);
 const railOpen = ref(true);
 const dockOpen = ref(false);
 const settingsOpen = ref(false);
+const exploreOpen = ref(false);
+const tour = shallowRef<TourEntry | null>(null);
+let preTour: { raDeg: number; decDeg: number; fovDeg: number } | null = null;
+const byUrl = new Map<string, SkyPlace>();
 const sheetTab = ref<"inview" | "mixer" | "card">("inview");
 const sheetSnap = ref<"peek" | "half" | "full">("peek");
 const sheetDragPx = ref<number | null>(null);
@@ -342,10 +380,15 @@ let ro: ResizeObserver | null = null;
 function measure(): void {
   viewport.w = window.innerWidth;
   viewport.h = window.innerHeight;
-  isPhone.value = viewport.w < 720;
+  isPhone.value = viewport.w < 720 || viewport.h < 520;
+  sideSheet.value = isPhone.value && viewport.w > viewport.h;
   const tb = topbar.value?.getBoundingClientRect();
   viewport.top = tb ? tb.bottom : 64;
-  if (isPhone.value) {
+  if (sideSheet.value) {
+    const sh = sheet.value?.getBoundingClientRect();
+    viewport.bottom = 0;
+    viewport.right = sh ? viewport.w - sh.left : 0;
+  } else if (isPhone.value) {
     const sh = sheet.value?.getBoundingClientRect();
     viewport.bottom = sh ? viewport.h - sh.top : 0;
     viewport.right = 0;
@@ -431,6 +474,45 @@ function addToMix(p: SkyPlace): void {
 function keep(p: SkyPlace): void { mixer.add(p); }
 function isPinned(id: string): boolean { return mixer.layers.find((l) => l.place.id === id)?.pinned ?? false; }
 function closeCard(): void { selected.value = null; sheetTab.value = "inview"; }
+
+// ── Explore and tours ───────────────────────────────────────────────────────
+function onExploreOpen(p: SkyPlace): void {
+  if (!byId.has(p.id)) { byId.set(p.id, p); }
+  if (isPhone.value) { exploreOpen.value = false; }
+  openPlace(p);
+}
+function useAsBackground(p: SkyPlace): void {
+  const iset = makeImageset(p);
+  if (!iset) { return; }
+  const registered = engine.addImagesetToRepository(iset);
+  const name = registered.get_name();
+  if (!backgrounds.value.includes(name)) { backgrounds.value = [...backgrounds.value, name].sort(); }
+  setBackground(name);
+  toast(`Background: ${name}`);
+}
+async function playTour(t: TourEntry): Promise<void> {
+  preTour = { ...readCamera() };
+  exploreOpen.value = false;
+  settingsOpen.value = false;
+  tour.value = t;
+  mixer.suspend(true);
+  try {
+    await engine.loadTour({ url: t.url, play: true });
+  } catch (err) {
+    console.warn("[wwt-next] tour failed", err);
+    toast("This tour couldn't be loaded.");
+    exitTour();
+  }
+}
+function exitTour(): void {
+  try { engine.stopTour(); } catch { /* not playing */ }
+  try { engine.closeTourPlayer(); } catch { /* no player */ }
+  tour.value = null;
+  engine.setBackgroundImageByName(bgName.value);
+  applyViewSettings();
+  mixer.suspend(false);
+  if (preTour) { skyFlyTo(preTour.raDeg, preTour.decDeg, preTour.fovDeg, true); }
+}
 function flyTo(raDeg: number, decDeg: number, fovDeg: number): void { skyFlyTo(raDeg, decDeg, fovDeg); }
 
 function onSearchSelect(h: SearchHit): void {
@@ -557,6 +639,7 @@ function onKey(e: KeyboardEvent): void {
   const typing = t.tagName === "INPUT" && (t as HTMLInputElement).type !== "range" && (t as HTMLInputElement).type !== "checkbox" || t.tagName === "SELECT" || t.tagName === "TEXTAREA";
   if (e.key === "Escape") {
     if (settingsOpen.value) { settingsOpen.value = false; return; }
+    if (exploreOpen.value) { exploreOpen.value = false; return; }
     if (selected.value) { closeCard(); return; }
     if (dockOpen.value) { dockOpen.value = false; return; }
     return;
@@ -615,7 +698,7 @@ async function boot(): Promise<void> {
     bootStage.value = "Loading the image index…";
     const all = await withTimeout(loadSearchIndex(), "Loading the image index", 45_000);
     places.value = markRaw(all);
-    all.forEach((p) => byId.set(p.id, p));
+    all.forEach((p) => { byId.set(p.id, p); if (p.study) { byUrl.set(p.study.url, p); } });
     images.value = markRaw(all.filter((p) => p.study && p.constellation !== "SolarSystem" && (p.study.projection === 2 || p.study.projection === 5)));
     nameIndex.value = markRaw(buildNameIndex(all));
     constellations.value = markRaw(constellationList());
@@ -638,6 +721,7 @@ async function boot(): Promise<void> {
     const placeId = stringParam("place");
     if (placeId && byId.get(placeId)) { selectPlace(byId.get(placeId) as SkyPlace); }
     scheduleInView();
+    syncUrl();
     if (constellations.value.length === 0) { window.setTimeout(() => { constellations.value = markRaw(constellationList()); }, 4000); }
 
     if (stringParam("debug") !== null) {
@@ -688,12 +772,21 @@ onBeforeUnmount(() => {
 @media (max-width: 1180px) { .desk .status { display: none; } }
 .status-chip { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 50px); left: 12px; z-index: 20; color: var(--muted); font-size: 0.72rem; background: var(--glass); border-radius: 12px; padding: 3px 10px; pointer-events: none; }
 
-.settings { position: absolute; z-index: 45; top: calc(var(--top-h, 64px) + 8px); right: 12px; width: min(340px, calc(100vw - 24px)); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.settings { position: absolute; z-index: 45; top: calc(var(--top-h, 64px) + 8px); right: 12px; width: min(340px, calc(100vw - 24px)); max-height: calc(100% - var(--top-h, 64px) - 20px); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .settings-head { display: flex; justify-content: space-between; align-items: center; }
 .settings h2 { margin: 0; font: 700 1rem var(--font-display); }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
 .field select { background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px; color: var(--fg); }
 .check { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; cursor: pointer; min-height: 30px; }
+
+.ib.big.explore-btn { width: auto; padding: 0 14px; gap: 8px; display: inline-flex; align-items: center; border-radius: 21px; }
+.phone .ib.big.explore-btn { width: 42px; padding: 0; justify-content: center; }
+.explore-wrap { position: absolute; z-index: 35; left: 12px; top: calc(var(--top-h, 64px) + 10px); bottom: 12px; width: min(760px, calc(100vw - 380px)); }
+.phone .explore-wrap { left: 0; right: 0; bottom: 0; width: auto; top: calc(var(--top-h, 64px) + 8px); border-radius: 18px 18px 0 0; z-index: 50; background: var(--panel-solid); }
+.tour-bar { position: absolute; z-index: 40; left: 50%; transform: translateX(-50%); bottom: max(16px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 12px; padding: 10px 12px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 24px); }
+.tour-title { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; }
+.tour-title .tag { color: var(--gold); }
+.muted-text { color: var(--muted); font-size: 0.9rem; }
 
 /* desktop */
 .rail { position: absolute; z-index: 20; right: 12px; top: calc(var(--top-h, 64px) + 10px); bottom: 12px; width: 340px; display: flex; flex-direction: column; }
@@ -726,6 +819,9 @@ onBeforeUnmount(() => {
 .sheet-tabs button { flex: 1; min-height: 36px; }
 .sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 12px; }
 .phone-mixbar { position: absolute; z-index: 24; left: 8px; right: 8px; padding: 6px 12px; border-radius: 26px; transition: bottom 0.22s ease; }
+.side .sheet { left: auto; right: 0; top: calc(var(--top-h, 64px) + 8px); bottom: 0; width: min(360px, 46vw); border-radius: 16px 0 0 0; border-right: 0; padding-right: env(safe-area-inset-right); }
+.side .grip { display: none; }
+.side .phone-mixbar { right: calc(min(360px, 46vw) + 8px); bottom: max(8px, env(safe-area-inset-bottom)); }
 
 /* sky overlays */
 .edge {

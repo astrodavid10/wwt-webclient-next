@@ -51,6 +51,8 @@ export const useMixer = defineStore("mixer", {
     /** Background survey brightness, percent. */
     backgroundPct: 100,
     autoDimmed: false,
+    /** While a guided tour plays, the mix is hidden (the tour sets its own imagery). */
+    suspended: false,
   }),
 
   getters: {
@@ -220,6 +222,12 @@ export const useMixer = defineStore("mixer", {
       });
     },
 
+    suspend(on: boolean): void {
+      this.suspended = on;
+      backgroundDim.factor = on ? 1 : this.backgroundPct / 100;
+      this.apply();
+    },
+
     /** Push every layer's effective opacity, enabled flag and draw override to the engine. */
     apply(): void {
       const shown = this.layers.filter((l) => l.on);
@@ -236,6 +244,7 @@ export const useMixer = defineStore("mixer", {
         else if (l === swipeTop) { op = 1; }
         else { op = l.on ? l.pct / 100 : 0; }
         op *= l.fade;
+        if (this.suspended) { op = 0; }
         layer.set_opacity(op);
         const enabled = op > 0;
         if (layer.get_enabled() !== enabled) { layer.set_enabled(enabled); }

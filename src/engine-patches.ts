@@ -7,7 +7,7 @@
 //   - clipped to a vertical band (Swipe compare) with the scissor test.
 // Both are keyed by layer id string and cost nothing for other layers.
 
-import { ImageSetLayer, RenderContext } from "@wwtelescope/engine";
+import { ImageSetLayer, RenderContext, Settings, TourStop, WWTControl } from "@wwtelescope/engine";
 
 export interface LayerDrawOverride {
   additive?: boolean;
@@ -65,5 +65,21 @@ if (!w.__wwtNextLayerPatch) {
     }
     return origDrawImageSet.call(this, imageset, opacity);
   };
+  // Engine 7.40 bug: while a tour plays, Settings.get_active() returns the
+  // TourStop, and renderOneFrame calls get_<setting>() for every entry in
+  // WWTControl.fadeSettings, some of which TourStop lacks (e.g.
+  // get_showEclipticOverviewText), so every frame throws. Fill the gaps from
+  // the global settings.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stopProto = TourStop.prototype as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fade: string[] = (WWTControl as any).fadeSettings ?? [];
+  for (const name of fade) {
+    const getter = `get_${name}`;
+    if (typeof stopProto[getter] !== "function") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      stopProto[getter] = function (): unknown { return (Settings as any).get_current()[getter](); };
+    }
+  }
   w.__wwtNextLayerPatch = true;
 }

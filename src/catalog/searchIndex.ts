@@ -33,7 +33,7 @@ export function https(url: string | undefined): string {
   return url.replace(/^http:\/\//i, "https://").replace("alasky.u-strasbg.fr", "alasky.cds.unistra.fr");
 }
 
-function fnv(s: string): string {
+export function fnv(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   return (h >>> 0).toString(36);
@@ -54,6 +54,15 @@ const SOURCES: [string, RegExp][] = [
   ["SOFIA", /sofia/i],
   ["WISE", /\bwise\b/i],
 ];
+
+/**
+ * Telescope tag for an image: an explicit telescope in its name wins (JWST
+ * feeds also carry "(Hubble image)" comparisons), then the tile URL's feed,
+ * then the credits page, then the credits text.
+ */
+export function sourceFor(name: string, s: { url: string; creditsUrl: string; credits: string }): string {
+  return inferSource(name) || inferSource(s.url) || inferSource(s.creditsUrl) || inferSource(s.credits);
+}
 
 export function inferSource(text: string): string {
   for (const [tag, re] of SOURCES) { if (re.test(text)) { return tag; } }
@@ -108,9 +117,7 @@ export function parseSearchData(data: RawData): SkyPlace[] {
         sizeDeg,
         vec: unitVector(p.r, p.d),
         study,
-        // The tile URL's feed name is the most reliable; credits often name
-        // several institutions ("... STScI and NOIRLab").
-        source: study ? (inferSource(study.url) || inferSource(study.creditsUrl) || inferSource(study.credits)) : "",
+        source: study ? sourceFor(p.n, study) : "",
       });
     }
   }
