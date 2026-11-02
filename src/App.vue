@@ -398,6 +398,9 @@ function measure(): void {
     const r = rail.value?.getBoundingClientRect();
     viewport.right = r ? viewport.w - r.left : 0;
   }
+  // The phone mixer bar floats above the sheet (or along the bottom beside the side sheet).
+  const bar = root.value?.querySelector(".phone-mixbar")?.getBoundingClientRect();
+  if (bar) { viewport.bottom = Math.max(viewport.bottom, viewport.h - bar.top); }
   root.value?.style.setProperty("--dock-h", `${viewport.bottom}px`);
   root.value?.style.setProperty("--top-h", `${viewport.top}px`);
   scheduleInView();
