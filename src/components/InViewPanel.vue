@@ -1,14 +1,14 @@
 <template>
   <div class="inview" :class="{ strip: layout === 'strip' }">
-    <div v-if="result && sources.length > 1" class="iv-filters" role="group" aria-label="Filter by telescope">
-      <button type="button" class="chip" :aria-pressed="!filter" @click="filter = ''">All</button>
+    <div v-if="result && sources.length > 1 && layout === 'list'" class="iv-filters" role="group" aria-label="Filter by telescope">
+      <button type="button" class="chip" :aria-pressed="filter === null" @click="filter = null">All</button>
       <button
         v-for="s in sources"
         :key="s.tag"
         type="button"
         class="chip"
         :aria-pressed="filter === s.tag"
-        @click="filter = filter === s.tag ? '' : s.tag"
+        @click="filter = filter === s.tag ? null : s.tag"
       ><i :style="{ background: sourceColor(s.tag) }"></i>{{ s.tag || "Other" }} <span class="chip-n">{{ s.n }}</span></button>
     </div>
     <p v-if="!result" class="iv-empty">Loading the image index…</p>
@@ -111,8 +111,9 @@ const emit = defineEmits<{
 }>();
 
 const STEP = 12;
-const filter = ref<string | null>("");
-const keep = (i: InViewItem) => !filter.value || i.place.source === filter.value;
+/** Telescope tag to show, or null for all ("" is a real tag: unattributed images). */
+const filter = ref<string | null>(null);
+const keep = (i: InViewItem) => filter.value === null || i.place.source === filter.value;
 /** Telescopes present in this view, most images first. */
 const sources = computed(() => {
   const r = props.result;
@@ -122,7 +123,7 @@ const sources = computed(() => {
   return Array.from(n, ([tag, count]) => ({ tag, n: count })).sort((a, b) => (a.tag === "" ? 1 : 0) - (b.tag === "" ? 1 : 0) || b.n - a.n);
 });
 // Drop a filter that no longer matches anything in view.
-watch(sources, (s) => { if (filter.value && !s.some((x) => x.tag === filter.value)) { filter.value = ""; } });
+watch(sources, (s) => { if (filter.value !== null && !s.some((x) => x.tag === filter.value)) { filter.value = null; } });
 const shown = reactive<Record<string, number>>({ fit: 12, wide: 4, small: 6 });
 function shownCount(id: string): number { return shown[id] ?? STEP; }
 function expand(id: string): void { shown[id] = shownCount(id) + STEP; }
