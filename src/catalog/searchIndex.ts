@@ -8,9 +8,20 @@ import { bandFor, parseBandPass } from "./bands";
 
 export const SEARCH_DATA_URL = "https://web.wwtassets.org/data/searchdata_v2.min.js";
 
+/**
+ * Development only: `?searchdata=dev/searchdata_v2.min.js` loads a locally
+ * built index (e.g. a fresh `cattool emit-searchdata`) from `public/` to
+ * preview it before it is uploaded. Same-origin relative paths only, and
+ * ignored in production builds, since this injects a script.
+ */
+export function searchDataUrl(param: string | null): string {
+  if (process.env.NODE_ENV === "production" || !param) { return SEARCH_DATA_URL; }
+  return /^[\w./-]+\.js$/.test(param) && !param.includes("..") && !param.startsWith("/") ? param : SEARCH_DATA_URL;
+}
+
 interface RawFgi {
   n: string; u: string; bd: number; cX: number; cY: number;
-  ct?: string; cu?: string; tu?: string; bp?: number | string; pr?: number; bl?: number; ft?: string;
+  ct?: string; cu?: string; tu?: string; bp?: number | string; bs?: string; pr?: number; bl?: number; ft?: string;
   lv?: number; bu?: boolean; q?: string; oX?: number; oY?: number; r?: number; wf?: number;
 }
 interface RawPlace { n: string; r: number; d: number; c?: number; z?: number; fgi?: RawFgi }
@@ -46,12 +57,14 @@ export function slug(s: string): string {
 
 const SOURCES: [string, RegExp][] = [
   ["JWST", /jwst|webb/i],
+  ["Euclid", /euclid/i],
   ["Rubin", /rubin|lsst/i],
   ["HST", /hubble|\bhst\b|stsci|spacetelescope/i],
   ["Chandra", /chandra|\bcxc\b/i],
   ["Spitzer", /spitzer|\bsst\b|ipac/i],
-  ["ESO", /\beso\b|eso\.org|vlt|vista/i],
-  ["NOIRLab", /noirlab|noao|kpno|ctio|gemini|kitt peak|cerro tololo/i],
+  // Labelled by operator: ALMA images under ESO, Gemini under NOIRLab.
+  ["ESO", /\beso\b|eso\.org|vlt|vista|\balma\b/i],
+  ["NOIRLab", /noirlab|noao|kpno|ctio|kitt peak|cerro tololo|gemini/i],
   ["SOFIA", /sofia/i],
   ["WISE", /\bwise\b/i],
   ["NRAO", /nrao|\bvla\b|\bvlba\b|green bank/i],
@@ -87,6 +100,7 @@ function studyFrom(f: RawFgi): StudyInfo {
     fileType: f.ft ?? ".png",
     projection: f.pr ?? 2,  // ProjectionType.tan
     bandPass: parseBandPass(f.bp),  // stored as a name ("IR"); absent = Visible
+    bands: f.bs ?? "",
     quadTreeMap: f.q ?? "",
     thumbUrl: https(f.tu),
     credits: (f.ct ?? "").replace(/&amp;/g, "&"),
@@ -121,7 +135,7 @@ export function parseSearchData(data: RawData): SkyPlace[] {
         vec: unitVector(p.r, p.d),
         study,
         source,
-        band: study ? bandFor(p.n, study.bandPass, source) : null,
+        band: study ? bandFor(p.n, study.bandPass, source, study.bands) : null,
       });
     }
   }

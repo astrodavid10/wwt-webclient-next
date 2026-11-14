@@ -230,7 +230,7 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from "vue";
 import { engineStore } from "@wwtelescope/engine-pinia";
-import { loadSearchIndex } from "./catalog/searchIndex";
+import { loadSearchIndex, searchDataUrl } from "./catalog/searchIndex";
 import { computeInView, InViewResult } from "./catalog/inView";
 import { buildNameIndex, NameIndexEntry, ConstellationEntry, SearchHit } from "./catalog/search";
 import { footprintSize, refineFootprint, footprintCorners, offsetToRaDec } from "./catalog/imagery";
@@ -787,7 +787,7 @@ async function boot(): Promise<void> {
     }
 
     bootStage.value = "Loading the image index…";
-    const all = await withTimeout(loadSearchIndex(), "Loading the image index", 45_000);
+    const all = await withTimeout(loadSearchIndex(searchDataUrl(stringParam("searchdata"))), "Loading the image index", 45_000);
     places.value = markRaw(all);
     all.forEach((p) => { byId.set(p.id, p); if (p.study) { byUrl.set(p.study.url, p); } });
     images.value = markRaw(all.filter((p) => p.study && p.constellation !== "SolarSystem" && (p.study.projection === 2 || p.study.projection === 5)));

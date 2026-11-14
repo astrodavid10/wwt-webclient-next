@@ -16,7 +16,13 @@
       <dl class="card-facts">
         <div><dt>Where</dt><dd>{{ constellation }}</dd></div>
         <div><dt>Size</dt><dd>{{ place.study ? formatSize(place.sizeDeg) : "—" }}</dd></div>
-        <div v-if="place.band" class="wide"><dt>Wavelength</dt><dd>{{ place.band.band }} <span class="card-basis">({{ bandBasisText(place.band.basis) }})</span></dd></div>
+        <div v-if="place.band" class="wide">
+          <dt>Wavelength</dt>
+          <dd>
+            {{ place.band.band }}<template v-if="place.band.parts?.length">: {{ place.band.parts.join(" + ") }}</template>
+            <span class="card-basis">({{ bandBasisText(place.band.basis) }})</span>
+          </dd>
+        </div>
         <div class="wide"><dt>Position</dt><dd class="mono">{{ formatRA(place.raHours * 15) }} {{ formatDec(place.decDeg) }}</dd></div>
       </dl>
       <p v-if="place.description" class="card-desc">{{ place.description }}</p>

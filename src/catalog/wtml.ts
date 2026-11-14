@@ -49,6 +49,7 @@ function studyFromImageSet(is: Element): StudyInfo {
     fileType: attr(is, "FileType") || ".png",
     projection: PROJECTIONS[attr(is, "Projection").toLowerCase()] ?? 2,
     bandPass: parseBandPass(attr(is, "BandPass")),
+    bands: attr(is, "Xbands"),
     quadTreeMap: attr(is, "QuadTreeMap"),
     thumbUrl: https(childText(is, "ThumbnailUrl")),
     credits: childText(is, "Credits"),
@@ -98,7 +99,7 @@ function placeFrom(el: Element, byUrl: Map<string, SkyPlace>): PlaceEntry | null
     vec: unitVector(raHours, decDeg),
     study,
     source,
-    band: study ? bandFor(name, study.bandPass, source) : null,
+    band: study ? bandFor(name, study.bandPass, source, study.bands) : null,
     description: description || undefined,
   };
   return { kind: "place", place, thumb, allSky };

@@ -19,7 +19,9 @@ export interface StudyInfo {
   bottomsUp: boolean;
   fileType: string;
   projection: number;    // wwtlib ProjectionType
-  bandPass: number;      // wwtlib BandPass
+  bandPass: number;      // wwtlib BandPass (9 = Multi, not yet in wwtlib)
+  /** A multi-band image's component bands as stored ("XRay,Visible"), or "". */
+  bands: string;
   quadTreeMap: string;
   thumbUrl: string;
   credits: string;

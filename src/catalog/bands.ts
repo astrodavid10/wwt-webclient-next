@@ -10,11 +10,13 @@
 // unnecessary without code changes here.
 
 /** wwtlib BandPass enum, by index. */
-export const BANDPASS_LABELS = ["Gamma", "X-ray", "Ultraviolet", "Visible", "H-alpha", "Infrared", "Microwave", "Radio", "Visible"];
+export const BANDPASS_LABELS = ["Gamma", "X-ray", "Ultraviolet", "Visible", "H-alpha", "Infrared", "Microwave", "Radio", "Visible", "Multiwavelength"];
 
 const BANDPASS_BY_NAME: Record<string, number> = {
   gamma: 0, xray: 1, "x-ray": 1, ultraviolet: 2, uv: 2, visible: 3, optical: 3, hydrogenalpha: 4, halpha: 4,
   ir: 5, infrared: 5, microwave: 6, radio: 7, visiblenight: 8,
+  // Not (yet) in the wwtlib enum: proposed for images that combine bands.
+  multi: 9, multiwavelength: 9,
 };
 
 /** BandPass as stored in searchdata (a name like "IR"), a WTML attribute, or a number. */
@@ -53,6 +55,8 @@ const NAME_KEYWORDS: [Band, RegExp][] = [
 const TELESCOPE_BAND: Record<string, Band> = {
   JWST: "Infrared", Spitzer: "Infrared", WISE: "Infrared", SOFIA: "Infrared",
   Chandra: "X-ray", NRAO: "Radio",
+  // Euclid's colour images combine its visible (VIS) and near-infrared (NISP) cameras.
+  Euclid: "Multiwavelength",
   HST: "Visible", ESO: "Visible", NOIRLab: "Visible", Rubin: "Visible",
 };
 
@@ -60,11 +64,20 @@ export interface BandInfo {
   band: Band;
   /** How the band was decided: the catalogue's BandPass, the image name, the telescope, or a default. */
   basis: "catalogue" | "name" | "telescope" | "default";
+  /** For a multi-band image recorded in the catalogue: its component bands, short to long. */
+  parts?: Band[];
 }
 
-export function bandFor(name: string, bandPass: number, telescope: string): BandInfo {
+/** "XRay,Visible,IR" (the catalogue's Xbands / search data "bs") to bands. */
+export function parseBands(list: string): Band[] {
+  return list.split(",").map((b) => BANDPASS_LABELS[parseBandPass(b)] as Band)
+    .filter((b, i, a) => b && b !== "Multiwavelength" && a.indexOf(b) === i);
+}
+
+export function bandFor(name: string, bandPass: number, telescope: string, bands = ""): BandInfo {
   if (bandPass !== 3 && bandPass !== 8) {
-    return { band: (BANDPASS_LABELS[bandPass] ?? "Visible") as Band, basis: "catalogue" };
+    const parts = bands ? parseBands(bands) : [];
+    return { band: (BANDPASS_LABELS[bandPass] ?? "Visible") as Band, basis: "catalogue", ...(parts.length ? { parts } : {}) };
   }
   const hits = new Set<Band>();
   for (const [band, re] of NAME_KEYWORDS) { if (re.test(name)) { hits.add(band); } }

@@ -11,6 +11,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   SOFIA: "#d55e00",
   WISE: "#9ecae1",
   NRAO: "#e0c9a6",
+  Euclid: "#6fd3c4",
   "": "#9aa7bf",
 };
 

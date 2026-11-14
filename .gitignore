@@ -39,3 +39,6 @@ tsconfig.tsbuildinfo
 # Working notes stay local; only README.md is published
 *.md
 !README.md
+
+# Locally built search index for previews (?searchdata=dev/...)
+/public/dev/
