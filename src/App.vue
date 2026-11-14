@@ -373,6 +373,7 @@ const edgeButtons = computed(() => {
   if (!r) { return []; }
   // The visible sky between the chrome (the same area In view uses).
   const a = freeArea("view");
+  if (!a.partial) { return []; }   // no clear patch of sky to put them in
   const left = a.left + 8, right = a.right - 8, top = Math.max(a.top, viewport.top) + 8, bottom = Math.min(a.bottom, viewport.h - viewport.bottom) - 8;
   if (right - left < 100 || bottom - top < 80) { return []; }   // sheet pulled up: no room
   const cx = (left + right) / 2, cy = (top + bottom) / 2;
@@ -406,7 +407,9 @@ function freeArea(kind: "view" | "flight"): FreeArea {
       : Math.min(bottom, snapHeight("half"));
   }
   const a = { left, right: w - viewport.right, top: viewport.top, bottom: h - bottom, partial: true };
-  // Too little left to be useful (e.g. a full-height sheet): use the whole screen.
+  // Too little left to be useful (a full-height sheet, or a tablet with the
+  // card or Explore beside the rail): use the whole screen, and the edge
+  // hints hide.
   if (a.right - a.left < 120 || a.bottom - a.top < 120) { return { left: 0, right: w, top: 0, bottom: h, partial: false }; }
   return a;
 }
