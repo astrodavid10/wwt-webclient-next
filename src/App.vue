@@ -32,7 +32,7 @@
         class="edge"
         :style="{ left: `${e.x}px`, top: `${e.y}px` }"
         :aria-label="`${e.count} images just off-screen, pan ${e.dir}`"
-        @click="flyTo(e.raDeg, e.decDeg, camera.fovDeg)"
+        @click="panToEdge(e.raDeg, e.decDeg)"
       ><span aria-hidden="true">{{ e.arrow }}</span> {{ e.count }}</button>
     </template>
 
@@ -216,8 +216,9 @@
         <p>{{ bootError }}</p>
         <button v-if="bootRetryable" type="button" class="btn primary" @click="reload">Try again</button>
       </div>
-      <div v-else class="boot-card panel">
-        <div class="boot-spinner" aria-hidden="true"></div>
+      <div v-else class="boot-card boot-loading">
+        <loading-logo />
+        <h1>WorldWide Telescope</h1>
         <p>{{ bootStage }}</p>
       </div>
     </div>
@@ -245,6 +246,7 @@ import InViewPanel from "./components/InViewPanel.vue";
 import MixerPanel from "./components/MixerPanel.vue";
 import ImageCard from "./components/ImageCard.vue";
 import ExplorePanel from "./components/ExplorePanel.vue";
+import LoadingLogo from "./components/LoadingLogo.vue";
 import type { TourEntry } from "./catalog/wtml";
 import { makeImageset } from "./catalog/imagery";
 
@@ -327,9 +329,11 @@ function scheduleInView(): void {
     ivTimer = 0;
     ivLast = performance.now();
     const c = readCamera();
-    const el = root.value;
-    const aspect = el ? el.clientWidth / Math.max(1, el.clientHeight) : 1.6;
-    result.value = markRaw(computeInView(images.value, { raDeg: c.raDeg, decDeg: c.decDeg, fovDeg: c.fovDeg, aspect, rollDeg: c.rollDeg }));
+    const vw = viewport.w, vh = Math.max(1, viewport.h);
+    // Only the sky the panels leave visible counts as in view.
+    const a = freeArea("view"), s = c.fovDeg / vh;
+    const win = { x0: (a.left - vw / 2) * s, x1: (a.right - vw / 2) * s, y0: (vh / 2 - a.bottom) * s, y1: (vh / 2 - a.top) * s };
+    result.value = markRaw(computeInView(images.value, { raDeg: c.raDeg, decDeg: c.decDeg, fovDeg: c.fovDeg, aspect: vw / vh, rollDeg: c.rollDeg, window: win }));
     conAbbr.value = centreConstellation();
     updateOutlines();
   }, wait);
@@ -367,8 +371,10 @@ const DIRS = ["right", "down and right", "down", "down and left", "left", "up an
 const edgeButtons = computed(() => {
   const r = result.value;
   if (!r) { return []; }
-  // The visible sky between the chrome.
-  const left = 8, right = viewport.w - viewport.right - 8, top = viewport.top + 8, bottom = viewport.h - viewport.bottom - 8;
+  // The visible sky between the chrome (the same area In view uses).
+  const a = freeArea("view");
+  const left = a.left + 8, right = a.right - 8, top = Math.max(a.top, viewport.top) + 8, bottom = Math.min(a.bottom, viewport.h - viewport.bottom) - 8;
+  if (right - left < 100 || bottom - top < 80) { return []; }   // sheet pulled up: no room
   const cx = (left + right) / 2, cy = (top + bottom) / 2;
   return r.edges.filter((e) => e.count >= 2).map((e) => {
     const ang = e.sector * Math.PI / 4, dx = Math.cos(ang), dy = Math.sin(ang);
@@ -378,6 +384,38 @@ const edgeButtons = computed(() => {
     return { ...e, x: cx + dx * t, y: cy + dy * t, arrow: ARROWS[e.sector], dir: DIRS[e.sector] };
   });
 });
+
+// ── the free area: the sky the panels leave visible ─────────────────────────
+interface FreeArea { left: number; right: number; top: number; bottom: number; partial: boolean }
+/**
+ * Screen rectangle (CSS px) not covered by panels. "view" is what In view and
+ * the edge hints use: on a phone it never treats more than the half-open sheet
+ * as covering the sky, so raising the sheet to read the list doesn't empty
+ * it. "flight" is where a newly opened image should land: on a phone the
+ * sheet will be at least half open by then, to show its card.
+ */
+function freeArea(kind: "view" | "flight"): FreeArea {
+  const w = viewport.w, h = viewport.h;
+  let left = 0, bottom = viewport.bottom;
+  if (!isPhone.value) {
+    if (exploreOpen.value) { left = Math.min(772, w - 380) + 12; }
+    else if (selected.value) { left = 364; }
+  } else if (!sideSheet.value) {
+    bottom = kind === "flight"
+      ? snapHeight(sheetSnap.value === "peek" ? "half" : sheetSnap.value)
+      : Math.min(bottom, snapHeight("half"));
+  }
+  const a = { left, right: w - viewport.right, top: viewport.top, bottom: h - bottom, partial: true };
+  // Too little left to be useful (e.g. a full-height sheet): use the whole screen.
+  if (a.right - a.left < 120 || a.bottom - a.top < 120) { return { left: 0, right: w, top: 0, bottom: h, partial: false }; }
+  return a;
+}
+/** Camera centre that puts (ra, dec) at the centre of the free area at this FOV. */
+function centreInFreeArea(ra: number, dec: number, fovDeg: number, a = freeArea("view")): [number, number] {
+  const s = fovDeg / viewport.h;
+  const dx = (a.left + a.right) / 2 - viewport.w / 2, dy = (a.top + a.bottom) / 2 - viewport.h / 2;
+  return offsetToRaDec(ra, dec, dx * s, dy * s);
+}
 
 // ── layout measurement ──────────────────────────────────────────────────────
 let ro: ResizeObserver | null = null;
@@ -410,6 +448,8 @@ function measure(): void {
   scheduleInView();
 }
 watch([isPhone, railOpen, dockOpen, sheetSnap, sheetTab, () => mixer.count, ready], () => nextTick(measure));
+// The card and Explore panels change the free area on desktop.
+watch([() => selected.value !== null, exploreOpen], () => nextTick(scheduleInView));
 
 // ── phone sheet ─────────────────────────────────────────────────────────────
 const SNAP_PX = { peek: 214, half: 0.52, full: 0.86 };
@@ -461,25 +501,14 @@ function framingFov(p: SkyPlace): number {
  * centres on the canvas, so the camera aims a little off the object.
  */
 function frameInFreeArea(ra: number, dec: number, fov: number): [number, number, number] {
-  const w = viewport.w, h = viewport.h;
-  const right = viewport.right;
-  let left = 0, bottom = viewport.bottom;
-  if (!isPhone.value) {
-    if (exploreOpen.value) { left = Math.min(772, w - 380) + 12; }
-    else if (selected.value) { left = 364; }
-  } else if (!sideSheet.value) {
-    bottom = snapHeight(sheetSnap.value === "peek" ? "half" : sheetSnap.value);
-  }
-  const top = viewport.top;
-  const fw = w - left - right, fh = h - top - bottom;
-  if (fw < 120 || fh < 120) { return [ra, dec, fov]; }
+  const h = viewport.h;
+  const a = freeArea("flight");
+  const fw = a.right - a.left, fh = a.bottom - a.top;
+  if (!a.partial) { return [ra, dec, fov]; }
   // Catalogue framings are a vertical FOV for a landscape screen: fit that
   // height into the free height, and ~1.3x it into the free width.
   const canvasFov = Math.max(fov * h / fh, fov * 1.3 * h / fw);
-  const s = canvasFov / h;
-  const dx = left + fw / 2 - w / 2, dy = top + fh / 2 - h / 2;
-  const [cRa, cDec] = offsetToRaDec(ra, dec, dx * s, dy * s);
-  return [cRa, cDec, canvasFov];
+  return [...centreInFreeArea(ra, dec, canvasFov, a), canvasFov];
 }
 
 function openPlace(p: SkyPlace, opts: { addToMix?: boolean } = {}): void {
@@ -561,7 +590,12 @@ function exitTour(): void {
   mixer.suspend(false);
   if (preTour) { skyFlyTo(preTour.raDeg, preTour.decDeg, preTour.fovDeg, true); }
 }
-function flyTo(raDeg: number, decDeg: number, fovDeg: number): void { skyFlyTo(raDeg, decDeg, fovDeg); }
+/** Edge hint tapped: bring that cluster to the middle of the visible sky, same zoom. */
+function panToEdge(raDeg: number, decDeg: number): void {
+  const fov = camera.value.fovDeg;
+  const [ra, dec] = centreInFreeArea(raDeg, decDeg, fov);
+  skyFlyTo(ra, dec, fov);
+}
 
 function onSearchSelect(h: SearchHit): void {
   if (h.place) { openPlace(h.place); return; }
@@ -898,7 +932,10 @@ onBeforeUnmount(() => {
 .boot-card h1 { margin: 0; font: 700 1.2rem var(--font-display); }
 .boot-card p { margin: 0; color: var(--muted); }
 .boot-warn { color: var(--gold); font-size: 1.6rem; }
-.boot-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--line-strong); border-top-color: var(--gold); animation: spin 1s linear infinite; }
+.boot:has(.boot-loading) { background: radial-gradient(ellipse at 50% 42%, #0d2550 0%, #050c1d 62%, #02050c 100%); }
+.boot-loading { background: none; gap: 10px; }
+.boot-loading h1 { font-weight: 600; letter-spacing: 0.02em; margin-top: 6px; }
+.boot-loading p { font-size: 0.9rem; min-height: 1.4em; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .toast { position: absolute; z-index: 60; left: 50%; transform: translateX(-50%); top: calc(var(--top-h, 64px) + 14px); background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 12px; padding: 10px 16px; max-width: min(520px, calc(100vw - 32px)); font-size: 0.9rem; word-break: break-word; }
